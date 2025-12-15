@@ -2,7 +2,7 @@
 
 **OpenVM** is a lightweight, web-based Docker container manager that provides users with isolated virtual environments accessible via a web terminal.
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![Flask](https://img.shields.io/badge/Flask-SocketIO-green.svg)
 ![Docker](https://img.shields.io/badge/Docker-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
