@@ -1,0 +1,33 @@
+# Files to exclude from Docker build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+.env
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation (not needed in image)
+docs/
+*.md
+
+# Development files
+*.log
+*.sqlite
+data/
+
+# Test files
+test/
+tests/

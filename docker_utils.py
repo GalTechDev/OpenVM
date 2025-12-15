@@ -1,0 +1,384 @@
+
+import subprocess
+import json
+import shlex
+import os
+
+CONFIG_PATH = 'data/config.json'
+
+def get_config():
+    """Load configuration from file."""
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    # Default config
+    return {
+        "docker_mode": "host",  # "host" (with sudo) or "container" (no sudo)
+        "use_sudo": True
+    }
+
+def save_config(config):
+    """Save configuration to file."""
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=2)
+
+class DockerHelper:
+    @staticmethod
+    def run_command(cmd_list):
+        config = get_config()
+        
+        # Build command based on mode
+        if config.get("docker_mode") == "container" or not config.get("use_sudo", True):
+            # Container mode - no sudo needed (socket mounted)
+            full_cmd = ["docker"] + cmd_list
+        else:
+            # Host mode - use sudo
+            full_cmd = ["sudo", "docker"] + cmd_list
+        
+        try:
+            result = subprocess.run(
+                full_cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Docker command failed: {e.stderr}")
+
+    @staticmethod
+    def inspect(container_id):
+        try:
+            output = DockerHelper.run_command(["inspect", container_id])
+            data = json.loads(output)
+            if not data:
+                return None
+            return data[0]
+        except:
+            return None
+
+    @staticmethod
+    def is_running(container_id):
+        info = DockerHelper.inspect(container_id)
+        if info and info['State']['Running']:
+            return True
+        return False
+        
+    @staticmethod
+    def get_status(container_id):
+        info = DockerHelper.inspect(container_id)
+        if info:
+            return info['State']['Status']
+        return "not_found"
+
+    @staticmethod
+    def create_network(network_name):
+        try:
+            # Check if exists
+            check = subprocess.run(["sudo", "docker", "network", "inspect", network_name], capture_output=True)
+            if check.returncode != 0:
+                DockerHelper.run_command(["network", "create", network_name])
+        except:
+            pass
+
+    @staticmethod
+    def create_container(username, ports=None, network=None, yaml_config=None):
+        # docker run -d --name openvm_client_<user> -h <user> ubuntu:latest tail -f /dev/null
+        # username here is actually the "suffix" or "ref" passed from web_app
+        container_name = f"openvm_client_{username}"
+        
+        # Check if exists
+        try:
+            DockerHelper.run_command(["rm", "-f", container_name])
+        except:
+            pass
+
+        # Parse YAML config if provided
+        image = "ubuntu:latest"
+        environment = []
+        volumes = []
+        command = ["tail", "-f", "/dev/null"]
+        
+        if yaml_config:
+            try:
+                import yaml
+                config = yaml.safe_load(yaml_config)
+                if config:
+                    if 'image' in config:
+                        image = config['image']
+                    if 'environment' in config:
+                        environment = config['environment'] if isinstance(config['environment'], list) else []
+                    if 'volumes' in config:
+                        volumes = config['volumes'] if isinstance(config['volumes'], list) else []
+                    if 'command' in config:
+                        cmd_val = config['command']
+                        if isinstance(cmd_val, str):
+                            command = cmd_val.split()
+                        elif isinstance(cmd_val, list):
+                            command = cmd_val
+            except Exception as e:
+                print(f"YAML parse error: {e}")
+
+        cmd = [
+            "run", "-d",
+            "--name", container_name,
+            "--hostname", username
+        ]
+        
+        if network:
+            cmd.extend(["--network", network])
+            
+        if ports:
+            # ports format: "80:80,8080:8080" or list
+            if isinstance(ports, str):
+                port_list = [p.strip() for p in ports.split(',') if p.strip()]
+            else:
+                port_list = ports
+            
+            for p in port_list:
+                cmd.extend(["-p", p])
+
+        # Add environment variables
+        for env in environment:
+            cmd.extend(["-e", env])
+        
+        # Add volumes
+        for vol in volumes:
+            cmd.extend(["-v", vol])
+
+        cmd.append(image)
+        cmd.extend(command)
+        
+        output = DockerHelper.run_command(cmd)
+        return output.strip() # Returns long ID
+
+    @staticmethod
+    def remove_container(container_id):
+        DockerHelper.run_command(["rm", "-f", container_id])
+
+    @staticmethod
+    def start(container_id):
+        DockerHelper.run_command(["start", container_id])
+
+    @staticmethod
+    def stop(container_id):
+        DockerHelper.run_command(["stop", container_id])
+        
+    @staticmethod
+    def restart(container_id):
+        return DockerHelper.run_command(["restart", container_id])
+
+    @staticmethod
+    def update_container_limits(container_id, ram_mb=None, cpu_percent=None):
+        """
+        Update container resource limits using docker update.
+        ram_mb: Memory limit in MB (None = unlimited)
+        cpu_percent: CPU limit as percentage (None = unlimited)
+        """
+        cmd = ["update"]
+        
+        if ram_mb is not None and ram_mb > 0:
+            cmd.extend(["--memory", f"{ram_mb}m"])
+            # Set memory swap to same as memory to prevent swap
+            cmd.extend(["--memory-swap", f"{ram_mb}m"])
+        else:
+            # Remove memory limit
+            cmd.extend(["--memory", "0"])
+            cmd.extend(["--memory-swap", "-1"])
+        
+        if cpu_percent is not None and cpu_percent > 0:
+            # Convert percentage to CPU quota
+            # 100% = 1 CPU = 100000 microseconds per 100000 period
+            cpu_quota = int(cpu_percent * 1000)  # percentage * 1000
+            cmd.extend(["--cpu-quota", str(cpu_quota)])
+            cmd.extend(["--cpu-period", "100000"])
+        else:
+            # Remove CPU limit
+            cmd.extend(["--cpu-quota", "0"])
+        
+        cmd.append(container_id)
+        return DockerHelper.run_command(cmd)
+
+    @staticmethod
+    def get_logs(container_id, tail=100):
+        return DockerHelper.run_command(["logs", "--tail", str(tail), container_id])
+
+    @staticmethod
+    def delete_container(container_id):
+        return DockerHelper.remove_container(container_id)
+
+    @staticmethod
+    def get_container_stats(container_id):
+        """Get CPU and memory usage for a container."""
+        try:
+            # Use --no-stream to get single snapshot, format as JSON-like
+            output = DockerHelper.run_command([
+                "stats", "--no-stream", "--format",
+                "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}",
+                container_id
+            ])
+            if not output:
+                return {"cpu": "0%", "mem_usage": "0B / 0B", "mem_percent": "0%"}
+            
+            parts = output.split("|")
+            return {
+                "cpu": parts[0] if len(parts) > 0 else "0%",
+                "mem_usage": parts[1] if len(parts) > 1 else "0B / 0B",
+                "mem_percent": parts[2] if len(parts) > 2 else "0%"
+            }
+        except:
+            return {"cpu": "--", "mem_usage": "--", "mem_percent": "--"}
+
+    @staticmethod
+    def list_files(container_id, path="/"):
+        # Returns list of dicts: {name, type: 'd'|'f', size, permissions}
+        # Using ls -la --time-style=+%Y-%m-%d_%H:%M:%S
+        try:
+            cmd = ["exec", container_id, "ls", "-la", "--time-style=+%Y-%m-%d_%H:%M:%S", path]
+            output = DockerHelper.run_command(cmd)
+            lines = output.split('\n')
+            files = []
+            for line in lines[1:]: # Skip 'total X'
+                parts = line.split()
+                if len(parts) < 6: continue
+                
+                # permissions links owner group size date time name
+                # drwxr-xr-x 1 root root 4096 2023-10-10_10:10:10 .
+                perms = parts[0]
+                # links = parts[1]
+                # owner = parts[2]
+                # group = parts[3]
+                size = parts[4]
+                date = parts[5]
+                name = " ".join(parts[6:])
+                
+                if name == '.' or name == '..': continue
+                
+                is_dir = perms.startswith('d')
+                files.append({
+                    "name": name,
+                    "type": "dir" if is_dir else "file",
+                    "size": size,
+                    "date": date,
+                    "perms": perms
+                })
+            # Sort: Directories first, then files
+            return sorted(files, key=lambda x: (x['type'] != 'dir', x['name']))
+        except Exception as e:
+            print(f"List files error: {e}")
+            return []
+
+    @staticmethod
+    def put_file(container_id, source_path, dest_path):
+        # docker cp source_path container_id:dest_path
+        return DockerHelper.run_command(["cp", source_path, f"{container_id}:{dest_path}"])
+
+    @staticmethod
+    def get_file_content_cmd(container_id, file_path):
+        # For small text files to preview? 
+        return ["exec", container_id, "cat", file_path]
+
+    @staticmethod
+    def read_file_bytes(container_id, file_path):
+        cmd = ["sudo", "docker", "exec", container_id, "cat", file_path]
+        result = subprocess.run(cmd, capture_output=True, check=True)
+        return result.stdout
+
+    @staticmethod
+    def create_directory(container_id, path):
+        # mkdir -p path
+        DockerHelper.run_command(["exec", container_id, "mkdir", "-p", path])
+
+    @staticmethod
+    def rename_path(container_id, old_path, new_path):
+        # mv old_path new_path
+        DockerHelper.run_command(["exec", container_id, "mv", old_path, new_path])
+
+    @staticmethod
+    def delete_path(container_id, path):
+        # rm -rf path
+        DockerHelper.run_command(["exec", container_id, "rm", "-rf", path])
+    
+    @staticmethod
+    def get_archive_cmd(container_id, path):
+        # Returns command to get a tar stream of the path.
+        # "docker cp container:path -" dumps tar to stdout
+        return ["sudo", "docker", "cp", f"{container_id}:{path}", "-"]
+
+    # Volume Management
+    @staticmethod
+    def create_volume(volume_name):
+        """Create a Docker volume."""
+        return DockerHelper.run_command(["volume", "create", volume_name])
+
+    @staticmethod
+    def list_volumes(prefix=None):
+        """List Docker volumes, optionally filtered by prefix."""
+        output = DockerHelper.run_command([
+            "volume", "ls", "--format", "{{.Name}}|{{.Driver}}|{{.Mountpoint}}"
+        ])
+        volumes = []
+        for line in output.strip().split('\n'):
+            if not line:
+                continue
+            parts = line.split('|')
+            name = parts[0] if len(parts) > 0 else ''
+            if prefix and not name.startswith(prefix):
+                continue
+            volumes.append({
+                'name': name,
+                'driver': parts[1] if len(parts) > 1 else 'local',
+                'mountpoint': parts[2] if len(parts) > 2 else ''
+            })
+        return volumes
+
+    @staticmethod
+    def delete_volume(volume_name):
+        """Delete a Docker volume."""
+        return DockerHelper.run_command(["volume", "rm", volume_name])
+
+    @staticmethod
+    def inspect_volume(volume_name):
+        """Get volume details."""
+        try:
+            import json
+            output = DockerHelper.run_command(["volume", "inspect", volume_name])
+            data = json.loads(output)
+            return data[0] if data else None
+        except:
+            return None
+
+    @staticmethod
+    def get_volume_size(volume_name):
+        """Get volume size in MB using du command on mountpoint."""
+        try:
+            # Get mountpoint from inspect
+            info = DockerHelper.inspect_volume(volume_name)
+            if not info or 'Mountpoint' not in info:
+                return 0
+            
+            mountpoint = info['Mountpoint']
+            # Use du to get size in KB, then convert to MB
+            result = subprocess.run(
+                ["sudo", "du", "-sk", mountpoint],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                size_kb = int(result.stdout.split()[0])
+                return size_kb / 1024  # Convert to MB
+            return 0
+        except:
+            return 0
+
+    @staticmethod
+    def get_all_volumes_with_sizes(prefix="openvm_vol_"):
+        """Get all volumes with their sizes."""
+        volumes = DockerHelper.list_volumes(prefix=prefix)
+        for v in volumes:
+            v['size_mb'] = round(DockerHelper.get_volume_size(v['name']), 2)
+        return volumes
+

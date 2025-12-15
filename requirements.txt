@@ -1,0 +1,14 @@
+# Web Framework
+flask
+flask-socketio
+gevent
+gevent-websocket
+
+# Authentication
+bcrypt
+
+# SSH Server
+asyncssh
+
+# System Monitoring
+psutil

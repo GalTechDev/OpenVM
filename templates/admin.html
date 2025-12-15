@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenVM | Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Overlay for mobile sidebar -->
+        <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="ri-cloud-windy-line"></i> <span>OpenVM</span>
+                </div>
+                <!-- Close Button Mobile -->
+                <button class="menu-toggle" onclick="toggleSidebar()"
+                    style="font-size: 1.2rem; color: var(--text-secondary); margin-left: auto; display: none;"> <i
+                        class="ri-close-line"></i> </button>
+            </div>
+            <nav>
+                <a href="/dashboard"><i class="ri-dashboard-line"></i> Dashboard</a>
+                <a href="/admin" class="active"><i class="ri-admin-line"></i> Admin Panel</a>
+                <a href="/settings"><i class="ri-settings-line"></i> Settings</a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-avatar {% if is_admin %}admin-avatar{% endif %}">{{ username[0] | upper
+                    }}</div>
+                <div class="user-info">
+                    <span class="name">{{ username }}</span>
+                    <span class="role">{% if is_admin %}Administrator{% else %}User{% endif %}</span>
+                </div>
+                <a href="/logout" class="logout"><i class="ri-logout-box-r-line"></i></a>
+            </div>
+        </aside>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loader-container">
+                <div class="loader-spinner"></div>
+                <p>Loading...</p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button class="menu-toggle" onclick="toggleSidebar()"><i class="ri-menu-line"></i></button>
+                    <h2>Admin Panel</h2>
+                </div>
+            </header>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('users')"><i class="ri-user-settings-line"></i>
+                    Users</button>
+                <button class="tab-btn" onclick="switchTab('containers')"><i class="ri-server-line"></i>
+                    Containers</button>
+                <button class="tab-btn" onclick="switchTab('volumes')"><i class="ri-hard-drive-2-line"></i>
+                    Volumes</button>
+            </div>
+
+            <div class="content-grid">
+
+                <!-- USERS TAB -->
+                <div id="tab-users" class="tab-content active">
+                    <div style="margin-bottom: 1rem; display: flex; justify-content: flex-end;">
+                        <button class="btn btn-primary" onclick="openModal()">
+                            <i class="ri-user-add-line"></i> Create User
+                        </button>
+                    </div>
+                    <!-- User List Card -->
+                    <div class="card">
+                        <h3><i class="ri-group-line"></i> Registered Users</h3>
+                        <div class="table-container">
+                            <table class="user-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="userListBody">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTAINERS TAB -->
+                <div id="tab-containers" class="tab-content" style="display: none;">
+                    <!-- Resource Stats Section -->
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <h3><i class="ri-server-line"></i> System Resources</h3>
+                        <div class="resource-stats"
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 1rem;">
+                            <!-- CPU -->
+                            <div class="resource-stat">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                    <span><i class="ri-cpu-line"></i> CPU</span>
+                                    <span id="cpuPercent">--%</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="cpuBar"
+                                        style="width: 0%; background: var(--accent);"></div>
+                                </div>
+                            </div>
+                            <!-- Memory -->
+                            <div class="resource-stat">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                    <span><i class="ri-ram-line"></i> Memory</span>
+                                    <span id="memPercent">--%</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="memBar"
+                                        style="width: 0%; background: var(--success);"></div>
+                                </div>
+                                <small id="memDetails" style="color: var(--text-secondary);">-- / -- GB</small>
+                            </div>
+                            <!-- Disk -->
+                            <div class="resource-stat">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                    <span><i class="ri-hard-drive-2-line"></i> Disk</span>
+                                    <span id="diskPercent">--%</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="diskBar"
+                                        style="width: 0%; background: var(--warning);"></div>
+                                </div>
+                                <small id="diskDetails" style="color: var(--text-secondary);">-- / -- GB</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="ri-docker-line"></i> Active Containers</h3>
+                        <div class="table-container">
+                            <table class="user-table">
+                                <thead>
+                                    <tr>
+                                        <th>Container ID</th>
+                                        <th>Owner</th>
+                                        <th>Status</th>
+                                        <th>CPU</th>
+                                        <th>Memory</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="containerListBody">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VOLUMES TAB -->
+                <div id="tab-volumes" class="tab-content" style="display: none;">
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <h3><i class="ri-add-circle-line"></i> Create Volume</h3>
+                        <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+                            <div class="form-group" style="flex: 1; margin-bottom: 0; min-width: 200px;">
+                                <label for="volumeUsername">For User</label>
+                                <select id="volumeUsername"
+                                    style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--text-primary);">
+                                    <!-- Populated by JS -->
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 2; margin-bottom: 0; min-width: 200px;">
+                                <label for="newVolumeName">Volume Name</label>
+                                <input type="text" id="newVolumeName" placeholder="my-data">
+                            </div>
+                            <button class="btn btn-primary" onclick="createVolume()">
+                                <i class="ri-add-line"></i> Create
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="ri-hard-drive-2-line"></i> All Volumes</h3>
+                        <div id="volumeList" style="margin-top: 1rem;">
+                            <p style="color: var(--text-secondary);">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- MODALS -->
+
+
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New User</h3>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="createUserForm">
+                    <div class="form-group">
+                        <label for="new_username">Username</label>
+                        <input type="text" id="new_username" placeholder="Enter username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new_password">Password</label>
+                        <input type="password" id="new_password" placeholder="Enter password" required>
+                    </div>
+                    <div class="form-group toggle-group">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="is_admin">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Grant Admin Privileges</span>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Create User</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="reassignModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Transfer Ownership</h3>
+                <span class="close-btn"
+                    onclick="document.getElementById('reassignModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="reassignForm">
+                    <input type="hidden" id="reassignContainerId">
+                    <div class="form-group">
+                        <label for="newOwnerSelect">Select New Owner</label>
+                        <select id="newOwnerSelect"
+                            style="width: 100%; padding: 0.75rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--text-primary);">
+                            <!-- Populated by JS -->
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Transfer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="createContainerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Container</h3>
+                <span class="close-btn"
+                    onclick="document.getElementById('createContainerModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="createContainerForm">
+                    <input type="hidden" id="containerUserTarget">
+                    <div class="form-group">
+                        <label for="containerName">Container Name</label>
+                        <input type="text" id="containerName" placeholder="e.g. Dev Environment" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="containerPorts">Ports (optional)</label>
+                        <input type="text" id="containerPorts" placeholder="e.g. 8080:80, 3000:3000">
+                        <small style="color: var(--text-secondary);">Format: host:container, comma separated</small>
+                    </div>
+
+                    <!-- YAML Configuration -->
+                    <div class="form-group">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label for="containerYaml">YAML Configuration (optional)</label>
+                            <label class="btn btn-sm btn-outline"
+                                style="cursor: pointer; margin: 0; padding: 0.25rem 0.5rem;">
+                                <i class="ri-upload-line"></i> Import
+                                <input type="file" id="yamlFileInput" accept=".yaml,.yml" style="display: none;"
+                                    onchange="loadYamlFile(this)">
+                            </label>
+                        </div>
+                        <textarea id="containerYaml" rows="8"
+                            placeholder="# Docker Compose-like YAML&#10;image: ubuntu:latest&#10;environment:&#10;  - KEY=value&#10;volumes:&#10;  - /host/path:/container/path"
+                            style="width: 100%; font-family: monospace; font-size: 0.85rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; color: var(--text-primary); resize: vertical;"></textarea>
+                        <small style="color: var(--text-secondary);">Supports: image, environment, volumes,
+                            command</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block">Create Container</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="editUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit User</h3>
+                <span class="close-btn"
+                    onclick="document.getElementById('editUserModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="editUserForm">
+                    <input type="hidden" id="editUsername">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="editUsernameDisplay" disabled style="opacity: 0.7;">
+                    </div>
+                    <div class="form-group">
+                        <label for="editPassword">New Password (leave blank to keep current)</label>
+                        <input type="password" id="editPassword" placeholder="Enter new password">
+                    </div>
+                    <div class="form-group toggle-group">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="editIsAdmin">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Admin Privileges</span>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Container Limits Modal -->
+    <div id="limitsModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3><i class="ri-cpu-line"></i> Resource Limits</h3>
+                <span class="close-btn"
+                    onclick="document.getElementById('limitsModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="limitsForm">
+                    <input type="hidden" id="limitsContainerId">
+
+                    <div class="form-group"
+                        style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem;">
+                        <label class="switch" style="margin: 0;">
+                            <input type="checkbox" id="limitsEnabled">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Enable Resource Limits</span>
+                    </div>
+
+                    <div id="limitsFields">
+                        <div class="form-group">
+                            <label for="ramLimit">RAM Limit (MB)</label>
+                            <input type="number" id="ramLimit" placeholder="e.g. 512 (empty = unlimited)" min="0">
+                            <small style="color: var(--text-secondary);">0 or empty = unlimited</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cpuLimit">CPU Limit (%)</label>
+                            <input type="number" id="cpuLimit" placeholder="e.g. 50 (empty = unlimited)" min="0"
+                                max="100">
+                            <small style="color: var(--text-secondary);">Percentage of 1 CPU core. 0 or empty =
+                                unlimited</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="storageLimit">Storage Limit (MB) <span style="color: var(--warning);">ℹ Info
+                                    only</span></label>
+                            <input type="number" id="storageLimit" placeholder="e.g. 1024 (info only)" min="0">
+                            <small style="color: var(--text-secondary);">For reference only. Docker doesn't enforce this
+                                natively.</small>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block">Save Limits</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Volume Limit Modal -->
+    <div id="volumeLimitModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3><i class="ri-hard-drive-2-line"></i> Set Volume Limit</h3>
+                <span class="close-btn"
+                    onclick="document.getElementById('volumeLimitModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="volumeLimitForm">
+                    <input type="hidden" id="volumeLimitName">
+                    <div class="form-group">
+                        <label for="volumeSizeLimit">Size Limit (MB)</label>
+                        <input type="number" id="volumeSizeLimit" placeholder="e.g. 1024 (empty = no limit)" min="0">
+                        <small style="color: var(--text-secondary);">0 or empty = no limit</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Limit</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 id="confirmTitle">Confirm Action</h3>
+                <span class="close-btn" onclick="closeConfirmModal(false)">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage" style="margin-bottom: 1.5rem; color: var(--text-secondary);">Are you sure?</p>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="btn btn-outline btn-block" onclick="closeConfirmModal(false)">Cancel</button>
+                    <button id="confirmBtn" class="btn btn-primary btn-block"
+                        style="margin-top: 0; background: #ef4444; border-color: #ef4444;">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Confirm Modal Utils
+        let confirmResolve = null;
+
+        function showConfirm(title, message) {
+            return new Promise((resolve) => {
+                document.getElementById('confirmTitle').textContent = title;
+                document.getElementById('confirmMessage').textContent = message;
+
+                const modal = document.getElementById('confirmModal');
+                const btn = document.getElementById('confirmBtn');
+
+                confirmResolve = resolve;
+                modal.style.display = 'flex';
+
+                btn.onclick = () => closeConfirmModal(true);
+            });
+        }
+
+        function closeConfirmModal(result) {
+            document.getElementById('confirmModal').style.display = 'none';
+            if (confirmResolve) {
+                confirmResolve(result);
+                confirmResolve = null;
+            }
+        }
+
+        function toggleSidebar() {
+            document.querySelector('.sidebar').classList.toggle('open');
+            document.querySelector('.sidebar-overlay').classList.toggle('active');
+        }
+
+        // System Resource Stats
+        function loadSystemStats() {
+            fetch('/api/admin/system_stats')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) return;
+
+                    // Update CPU
+                    document.getElementById('cpuPercent').textContent = data.cpu + '%';
+                    document.getElementById('cpuBar').style.width = data.cpu + '%';
+
+                    // Update Memory
+                    document.getElementById('memPercent').textContent = data.memory + '%';
+                    document.getElementById('memBar').style.width = data.memory + '%';
+                    document.getElementById('memDetails').textContent =
+                        data.memory_used + ' / ' + data.memory_total + ' GB';
+
+                    // Update Disk
+                    document.getElementById('diskPercent').textContent = data.disk + '%';
+                    document.getElementById('diskBar').style.width = data.disk + '%';
+                    document.getElementById('diskDetails').textContent =
+                        data.disk_used + ' / ' + data.disk_total + ' GB';
+                });
+        }
+
+        // Load stats on page load and refresh every 5 seconds
+        loadSystemStats();
+        setInterval(loadSystemStats, 5000);
+
+        // Volume Management
+        function loadVolumes() {
+            const listDiv = document.getElementById('volumeList');
+            const userSelect = document.getElementById('volumeUsername');
+            if (!listDiv) return;
+
+            // Populate user dropdown
+            if (userSelect && userSelect.options.length === 0) {
+                allUsers.forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u.username;
+                    opt.textContent = u.username;
+                    userSelect.appendChild(opt);
+                });
+            }
+
+            fetch('/api/admin/volumes/monitoring')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        listDiv.innerHTML = `<p style="color: var(--danger);">${data.error}</p>`;
+                        return;
+                    }
+
+                    if (data.volumes.length === 0) {
+                        listDiv.innerHTML = '<p style="color: var(--text-secondary);">No volumes created yet.</p>';
+                        return;
+                    }
+
+                    let html = '<div class="volume-list">';
+                    data.volumes.forEach(v => {
+                        const alertStyle = v.over_limit ? 'border-left: 3px solid var(--danger);' : '';
+                        const sizeDisplay = v.size_mb + ' MB';
+                        const limitDisplay = v.size_limit_mb ? v.size_limit_mb + ' MB' : 'No limit';
+                        const usageDisplay = v.usage_percent ? `(${v.usage_percent}%)` : '';
+                        const warningIcon = v.over_limit ? '<i class="ri-error-warning-line" style="color: var(--danger); margin-left: 0.5rem;" title="Over limit!"></i>' : '';
+
+                        html += `
+                            <div class="volume-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-dark); border-radius: 0.5rem; margin-bottom: 0.5rem; ${alertStyle}">
+                                <div style="flex: 1;">
+                                    <strong style="color: var(--text-primary);">${v.display_name}</strong>${warningIcon}
+                                    <div style="font-size: 0.8em; color: var(--text-secondary);">
+                                        Owner: ${v.owner} | Size: ${sizeDisplay} ${usageDisplay} | Limit: ${limitDisplay}
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 0.25rem;">
+                                    <button class="btn-icon info" onclick="openVolumeLimitModal('${v.name}', ${v.size_limit_mb || 0})" title="Set Limit">
+                                        <i class="ri-settings-3-line"></i>
+                                    </button>
+                                    <button class="btn-icon danger" onclick="deleteVolume('${v.name}')" title="Delete">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    listDiv.innerHTML = html;
+                });
+        }
+
+        function createVolume() {
+            const username = document.getElementById('volumeUsername').value;
+            const name = document.getElementById('newVolumeName').value.trim();
+
+            if (!name) {
+                alert('Please enter a volume name');
+                return;
+            }
+
+            fetch('/api/admin/volumes/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, name })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        document.getElementById('newVolumeName').value = '';
+                        loadVolumes();
+                    }
+                });
+        }
+
+        async function deleteVolume(volumeName) {
+            if (!await showConfirm('Delete Volume', 'Are you sure you want to delete this volume? All data will be lost.')) return;
+
+            fetch('/api/admin/volumes/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: volumeName })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadVolumes();
+                    }
+                });
+        }
+
+        // Volume Limit Modal Functions
+        function openVolumeLimitModal(volumeName, currentLimit) {
+            document.getElementById('volumeLimitName').value = volumeName;
+            document.getElementById('volumeSizeLimit').value = currentLimit || '';
+            document.getElementById('volumeLimitModal').style.display = 'flex';
+        }
+
+        document.getElementById('volumeLimitForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const volumeName = document.getElementById('volumeLimitName').value;
+            const sizeLimit = document.getElementById('volumeSizeLimit').value;
+
+            fetch('/api/admin/volumes/limit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    volume_name: volumeName,
+                    size_limit_mb: sizeLimit ? parseInt(sizeLimit) : null
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        document.getElementById('volumeLimitModal').style.display = 'none';
+                        loadVolumes();
+                    }
+                });
+        });
+
+        // Container Limits Modal Functions
+        function openLimitsModal(containerId) {
+            document.getElementById('limitsContainerId').value = containerId;
+
+            // Fetch current limits
+            fetch(`/api/admin/container/limits/${containerId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+
+                    document.getElementById('limitsEnabled').checked = data.limits_enabled;
+                    document.getElementById('ramLimit').value = data.ram_limit_mb || '';
+                    document.getElementById('cpuLimit').value = data.cpu_limit_percent || '';
+                    document.getElementById('storageLimit').value = data.storage_limit_mb || '';
+
+                    document.getElementById('limitsModal').style.display = 'flex';
+                });
+        }
+
+        document.getElementById('limitsForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const containerId = document.getElementById('limitsContainerId').value;
+            const data = {
+                container_id: containerId,
+                limits_enabled: document.getElementById('limitsEnabled').checked,
+                ram_limit_mb: document.getElementById('ramLimit').value ? parseInt(document.getElementById('ramLimit').value) : null,
+                cpu_limit_percent: document.getElementById('cpuLimit').value ? parseInt(document.getElementById('cpuLimit').value) : null,
+                storage_limit_mb: document.getElementById('storageLimit').value ? parseInt(document.getElementById('storageLimit').value) : null
+            };
+
+            fetch('/api/admin/container/limits', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(res => res.json())
+                .then(result => {
+                    if (result.error) {
+                        alert(result.error);
+                    } else {
+                        document.getElementById('limitsModal').style.display = 'none';
+                        loadUsers();
+                    }
+                });
+        });
+
+        // ... (Previous Modal Logic) ...
+        // Modal Logic
+        const modal = document.getElementById("userModal");
+
+        function openModal() {
+            modal.style.display = "flex";
+            document.getElementById('new_username').focus();
+        }
+
+        function closeModal() {
+            modal.style.display = "none";
+        }
+
+        window.onclick = function (event) {
+            if (event.target == modal) closeModal();
+            if (event.target == document.getElementById('logModal')) document.getElementById('logModal').style.display = 'none';
+            if (event.target == document.getElementById('reassignModal')) document.getElementById('reassignModal').style.display = 'none';
+            if (event.target == document.getElementById('createContainerModal')) document.getElementById('createContainerModal').style.display = 'none';
+        }
+
+        let allUsers = [];
+
+        // Data Logic
+        function loadUsers() {
+            fetch('/api/admin/users')
+                .then(res => res.json())
+                .then(data => {
+                    allUsers = data.users; // Store for reassign modal
+
+                    const userBody = document.getElementById('userListBody');
+                    userBody.innerHTML = '';
+                    const containerBody = document.getElementById('containerListBody');
+                    containerBody.innerHTML = '';
+
+                    data.users.forEach(user => {
+                        // User Row
+                        const trUser = document.createElement('tr');
+                        const blockBtn = user.is_blocked ?
+                            `<button class="btn-icon success" onclick="toggleBlock('${user.username}', false)" title="Unblock"><i class="ri-lock-unlock-line"></i></button>` :
+                            `<button class="btn-icon warning" onclick="toggleBlock('${user.username}', true)" title="Block"><i class="ri-lock-2-line"></i></button>`;
+
+                        const initial = user.username[0].toUpperCase();
+                        const avatarClass = user.is_admin ? 'user-avatar admin-avatar' : 'user-avatar';
+
+                        trUser.innerHTML = `
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <div class="${avatarClass}" style="width: 32px; height: 32px; font-size: 0.9rem;">${initial}</div>
+                                <div>
+                                    <div style="font-weight: 500;">${user.username}</div>
+                                    <div style="font-size: 0.8em; color: var(--text-secondary);">${user.containers.length} containers</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${user.is_admin ? '<span class="badge admin">Admin</span>' : '<span class="badge user">User</span>'}
+                            ${user.is_blocked ? '<span class="badge blocked">Blocked</span>' : ''}</td>
+                        <td class="action-buttons-cell">
+                             <div class="action-buttons">
+                                ${blockBtn}
+                                <button class="btn-icon info" onclick="openEditUserModal('${user.username}', ${user.is_admin})" title="Edit User">
+                                    <i class="ri-edit-line"></i>
+                                </button>
+                                <button class="btn-icon primary" onclick="openCreateContainerModal('${user.username}')" title="Add Container">
+                                    <i class="ri-add-box-line"></i>
+                                </button>
+                                <button class="btn-icon danger" onclick="deleteUser('${user.username}')" title="Delete User">
+                                    <i class="ri-delete-bin-line"></i>
+                                </button>
+                             </div>
+                        </td>
+                    `;
+                        userBody.appendChild(trUser);
+
+                        // Container Rows (Loop through user containers)
+                        user.containers.forEach(cont => {
+                            const trCont = document.createElement('tr');
+                            trCont.innerHTML = `
+                            <td><span class="mono">${cont.id.substring(0, 12)}</span>
+                                <br><span style="font-size:0.8em; color:var(--accent)">${cont.name || 'Unnamed'}</span>
+                            </td>
+                            <td><button class="btn-owner" onclick="openReassignModal('${cont.id}', '${user.username}')"><i class="ri-user-shared-line"></i> ${user.username}</button></td>
+                            <td><span class="status-indicator ${cont.status === 'running' ? 'running' : 'stopped'}"></span> ${cont.status}</td>
+                            <td><span class="mono">${cont.cpu}</span></td>
+                            <td><span class="mono" title="${cont.mem_usage}">${cont.mem_percent}</span></td>
+                            <td class="action-buttons-cell">
+                                <div class="action-buttons">
+
+                                    <button class="btn-icon primary" title="Terminal" onclick="openAdminTerminal('${cont.id}')"><i class="ri-terminal-box-line"></i></button>
+                                    <button class="btn-icon info" title="Limits" onclick="openLimitsModal('${cont.id}')"><i class="ri-cpu-line"></i></button>
+                                    <button class="btn-icon success" title="Start" onclick="adminAction('${cont.id}', 'start')"><i class="ri-play-line"></i></button>
+                                    <button class="btn-icon warning" title="Stop" onclick="adminAction('${cont.id}', 'stop')"><i class="ri-stop-line"></i></button>
+                                    <button class="btn-icon danger" title="Delete" onclick="adminAction('${cont.id}', 'delete')"><i class="ri-delete-bin-2-line"></i></button>
+                                </div>
+                            </td>
+                        `;
+                            containerBody.appendChild(trCont);
+                        });
+                    });
+                    // Hide loading overlay
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                });
+        }
+
+        // Reassign Logic
+        function openReassignModal(container_id, current_owner) {
+            document.getElementById('reassignContainerId').value = container_id;
+            const select = document.getElementById('newOwnerSelect');
+            select.innerHTML = '';
+
+            allUsers.forEach(u => {
+                if (u.username !== current_owner) {
+                    const opt = document.createElement('option');
+                    opt.value = u.username;
+                    opt.innerText = u.username;
+                    select.appendChild(opt);
+                }
+            });
+
+            document.getElementById('reassignModal').style.display = 'flex';
+        }
+
+        document.getElementById('reassignForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const container_id = document.getElementById('reassignContainerId').value;
+            const new_owner = document.getElementById('newOwnerSelect').value;
+
+            fetch('/api/admin/container/reassign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ container_id, new_owner })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) alert(data.error);
+                    else {
+                        alert('Ownership transferred');
+                        document.getElementById('reassignModal').style.display = 'none';
+                        loadUsers();
+                    }
+                });
+        });
+
+
+        // --- NEW ADMIN FUNCTIONS ---
+        // (toggleBlock, adminAction, showLogs, openAdminTerminal, create/delete User... same as before)
+        function toggleBlock(username, shouldBlock) {
+            fetch('/api/admin/user/block', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, block: shouldBlock })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) alert(data.error);
+                    else loadUsers();
+                });
+        }
+
+        function openCreateContainerModal(username) {
+            document.getElementById('containerUserTarget').value = username;
+            document.getElementById('createContainerModal').style.display = 'flex';
+            document.getElementById('containerName').focus();
+        }
+
+        // Load YAML file into textarea
+        function loadYamlFile(input) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    document.getElementById('containerYaml').value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        document.getElementById('createContainerForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('containerUserTarget').value;
+            const name = document.getElementById('containerName').value;
+            const ports = document.getElementById('containerPorts').value;
+            const yaml_config = document.getElementById('containerYaml').value;
+            const submitBtn = e.target.querySelector('button');
+            const originalText = submitBtn.innerText;
+
+            submitBtn.innerText = 'Creating...';
+            submitBtn.disabled = true;
+
+            fetch('/api/admin/container/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, name, ports, yaml_config })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    submitBtn.innerText = originalText;
+                    submitBtn.disabled = false;
+
+                    if (data.error) alert(data.error);
+                    else {
+                        document.getElementById('createContainerModal').style.display = 'none';
+                        e.target.reset();
+                        loadUsers();
+                    }
+                });
+        });
+
+
+        async function performAction(container_id, action) {
+            if (!await showConfirm('Container Action', `Perform '${action}' on ${container_id}?`)) return;
+
+            fetch('/api/admin/container/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ container_id, action })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) alert(data.error);
+                    else {
+                        loadUsers();
+                        loadSystemStats();
+                    }
+                });
+        }
+
+        // Alias for button onclick handlers
+        const adminAction = performAction;
+
+        // Removed old changeOwner function, replaced by modal above.
+
+
+
+        function openAdminTerminal(container_id) {
+            localStorage.setItem('admin_term_target', container_id);
+            window.open('/dashboard?admin_target=' + container_id, '_blank');
+        }
+
+        function openEditUserModal(username, isAdmin) {
+            document.getElementById('editUsername').value = username;
+            document.getElementById('editUsernameDisplay').value = username;
+            document.getElementById('editPassword').value = '';
+            document.getElementById('editIsAdmin').checked = isAdmin;
+            document.getElementById('editUserModal').style.display = 'flex';
+        }
+
+        document.getElementById('editUserForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('editUsername').value;
+            const password = document.getElementById('editPassword').value;
+            const isAdmin = document.getElementById('editIsAdmin').checked;
+
+            fetch('/api/admin/edit_user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password: password || null, is_admin: isAdmin })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) alert(data.error);
+                    else {
+                        document.getElementById('editUserModal').style.display = 'none';
+                        loadUsers();
+                    }
+                });
+        });
+
+        document.getElementById('createUserForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('new_username').value;
+            const password = document.getElementById('new_password').value;
+            const isAdmin = document.getElementById('is_admin').checked;
+
+            fetch('/api/admin/create_user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, is_admin: isAdmin })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) alert(data.error);
+                    else {
+                        document.getElementById('createUserForm').reset();
+                        closeModal();
+                        loadUsers();
+                    }
+                });
+        });
+
+        function deleteUser(username) {
+            if (!confirm(`Delete user ${username}? This cannot be undone.`)) return;
+            fetch('/api/admin/delete_user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) alert(data.error);
+                    else loadUsers();
+                });
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(content => content.style.display = 'none');
+            document.getElementById('tab-' + tabName).style.display = 'block';
+
+            if (tabName === 'volumes') {
+                loadVolumes();
+            }
+        }
+
+        loadUsers();
+    </script>
+
+    <style>
+        /* Previous styles... */
+        /* ... (Tabs/Table styles) ... */
+
+        .btn-icon {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-right: 4px;
+        }
+
+        .btn-icon:hover {
+            transform: translateY(-2px);
+            color: white;
+        }
+
+        .btn-icon.info:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .btn-icon.primary:hover {
+            background: white;
+            color: black;
+            border-color: white;
+        }
+
+        .btn-icon.success:hover {
+            background: var(--success);
+            border-color: var(--success);
+        }
+
+        .btn-icon.warning:hover {
+            background: var(--warning);
+            border-color: var(--warning);
+            color: black;
+        }
+
+        .btn-icon.danger:hover {
+            background: var(--danger);
+            border-color: var(--danger);
+        }
+
+        .action-buttons {
+            display: flex;
+            align-items: center;
+        }
+
+        /* ... (Other styles) ... */
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        /* [Rest of Styles identical to previous, just ensuring we keep them] */
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--bg-card);
+            color: var(--accent);
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .user-table th,
+        .user-table td {
+            text-align: left;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .user-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .mono {
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        .badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .badge.admin {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent);
+        }
+
+        .badge.user {
+            background: rgba(148, 163, 184, 0.2);
+            color: var(--text-secondary);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+            background: var(--text-secondary);
+        }
+
+        .status-indicator.running {
+            background: var(--success);
+            box-shadow: 0 0 5px var(--success);
+        }
+
+        .status-indicator.stopped {
+            background: var(--danger);
+        }
+
+
+
+        /* MODAL STYLES */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background-color: var(--bg-card);
+            padding: 2rem;
+            border-radius: 1rem;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid var(--border);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h3 {
+            font-size: 1.25rem;
+            margin: 0;
+        }
+
+        .close-btn {
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .btn-block {
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--text-secondary);
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--accent);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(26px);
+        }
+
+        .header-actions {
+            margin-left: auto;
+        }
+
+        .btn-owner {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.25rem 0.75rem;
+            border-radius: 2rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .btn-owner:hover {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .btn-owner i {
+            color: var(--text-secondary);
+        }
+
+        .btn-owner:hover i {
+            color: var(--accent);
+        }
+    </style>
+</body>
+
+</html>

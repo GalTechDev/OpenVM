@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="OpenVM - Plateforme web de gestion de machines virtuelles Docker avec terminal SSH intégré">
+    <title>OpenVM | Docker VM Manager</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="#" class="nav-logo">
+                <i class="ri-cloud-line"></i>
+                <span>OpenVM</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">Fonctionnalités</a></li>
+                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#installation">Installation</a></li>
+                <li><a href="#screenshots">Screenshots</a></li>
+                <li><a href="https://github.com/GalTechDev/OpenVM" target="_blank">
+                        <i class="ri-github-fill"></i> GitHub
+                    </a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="hero">
+        <div class="hero-content">
+            <span class="hero-badge">🚀 Open Source • Self-Hosted</span>
+            <h1>
+                <span class="gradient-text">OpenVM</span>
+            </h1>
+            <p class="hero-subtitle">
+                Plateforme web de gestion de machines virtuelles Docker avec terminal SSH intégré,
+                explorateur de fichiers et panneau d'administration complet.
+            </p>
+
+            <div class="hero-buttons">
+                <a href="#installation" class="btn btn-primary">
+                    <i class="ri-download-line"></i> Installation
+                </a>
+                <a href="https://github.com/GalTechDev/OpenVM" target="_blank" class="btn btn-secondary">
+                    <i class="ri-github-line"></i> Voir sur GitHub
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="section" id="features">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Fonctionnalités</span>
+                <h2>Tout ce dont vous avez besoin</h2>
+                <p>Une solution complète pour gérer vos environnements virtualisés</p>
+            </div>
+
+            <div class="grid-3">
+                <div class="card">
+                    <div class="card-icon">🖥️</div>
+                    <h3 class="card-title">Terminal SSH Web</h3>
+                    <p>Accédez à vos conteneurs directement depuis le navigateur avec un terminal SSH complet basé sur
+                        xterm.js.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📁</div>
+                    <h3 class="card-title">Explorateur de Fichiers</h3>
+                    <p>Naviguez, téléchargez et uploadez des fichiers dans vos conteneurs avec une interface intuitive.
+                    </p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">👥</div>
+                    <h3 class="card-title">Multi-Utilisateurs</h3>
+                    <p>Gestion complète des utilisateurs avec authentification, rôles admin et isolation des conteneurs.
+                    </p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">⚙️</div>
+                    <h3 class="card-title">Configuration YAML</h3>
+                    <p>Créez des conteneurs avec des configurations personnalisées via fichiers YAML (image, volumes,
+                        env).</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">📊</div>
+                    <h3 class="card-title">Monitoring Ressources</h3>
+                    <p>Surveillez l'utilisation CPU, RAM et disque en temps réel pour le système et chaque conteneur.
+                    </p>
+                </div>
+                <div class="card">
+                    <div class="card-icon">🔒</div>
+                    <h3 class="card-title">Limites Ressources</h3>
+                    <p>Définissez des limites CPU et RAM par conteneur avec alertes de dépassement.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section class="architecture" id="architecture">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Vue d'ensemble</span>
+                <h2>Architecture du Système</h2>
+                <p>Une stack moderne et légère</p>
+            </div>
+
+            <div class="architecture-diagram">
+                <div class="arch-node">
+                    <div class="arch-node-icon">🌐</div>
+                    <div class="arch-node-title">Frontend</div>
+                    <div class="arch-node-desc">HTML/CSS/JS<br>xterm.js</div>
+                </div>
+
+                <div class="arch-arrow">→</div>
+
+                <div class="arch-node">
+                    <div class="arch-node-icon">🐍</div>
+                    <div class="arch-node-title">Flask</div>
+                    <div class="arch-node-desc">API REST<br>WebSocket</div>
+                </div>
+
+                <div class="arch-arrow">→</div>
+
+                <div class="arch-node">
+                    <div class="arch-node-icon">🐳</div>
+                    <div class="arch-node-title">Docker</div>
+                    <div class="arch-node-desc">Conteneurs<br>Volumes</div>
+                </div>
+
+                <div class="arch-arrow">→</div>
+
+                <div class="arch-node">
+                    <div class="arch-node-icon">💾</div>
+                    <div class="arch-node-title">SQLite</div>
+                    <div class="arch-node-desc">Users<br>Containers</div>
+                </div>
+            </div>
+
+            <div class="grid-2" style="margin-top: var(--space-3xl);">
+                <div class="card">
+                    <h3 class="card-title" style="color: var(--cloud-primary);">🔧 Stack Technique</h3>
+                    <ul class="feature-list">
+                        <li><i class="ri-check-line"></i> <strong>Backend:</strong> Flask + Flask-SocketIO</li>
+                        <li><i class="ri-check-line"></i> <strong>Terminal:</strong> xterm.js + WebSocket</li>
+                        <li><i class="ri-check-line"></i> <strong>Database:</strong> SQLite (léger, portable)</li>
+                        <li><i class="ri-check-line"></i> <strong>Auth:</strong> bcrypt + Sessions</li>
+                        <li><i class="ri-check-line"></i> <strong>Container:</strong> Docker Engine API</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3 class="card-title" style="color: var(--accent-green);">📋 Prérequis</h3>
+                    <ul class="feature-list">
+                        <li><i class="ri-check-line"></i> Python 3.8+</li>
+                        <li><i class="ri-check-line"></i> Docker Engine</li>
+                        <li><i class="ri-check-line"></i> Linux (Ubuntu/Debian recommandé)</li>
+                        <li><i class="ri-check-line"></i> Permissions Docker (group ou sudo)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Section -->
+    <section class="section" id="installation">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Démarrage rapide</span>
+                <h2>Installation</h2>
+                <p>Déployez OpenVM en quelques minutes</p>
+            </div>
+
+            <div class="grid-2">
+                <!-- Docker Hub Option -->
+                <div class="card" style="border-color: rgba(59, 130, 246, 0.5);">
+                    <div
+                        style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-lg);">
+                        <span style="font-size: 2rem;">🐳</span>
+                        <div>
+                            <h3 class="card-title" style="margin-bottom: 0; color: var(--cloud-primary);">Docker Hub
+                            </h3>
+                            <small style="color: var(--text-muted);">Recommandé • Le plus rapide</small>
+                        </div>
+                    </div>
+
+                    <h4 style="font-size: 1rem; margin-bottom: var(--space-sm);">Option 1: Docker Compose</h4>
+                    <div class="code-block" style="margin-bottom: var(--space-lg);">
+                        <code>curl -O https://raw.githubusercontent.com/GalTechDev/OpenVM/main/docker-compose.yml
+docker-compose up -d</code>
+                    </div>
+
+                    <h4 style="font-size: 1rem; margin-bottom: var(--space-sm);">Option 2: Docker Run</h4>
+                    <div class="code-block">
+                        <code>docker run -d \
+  --name openvm \
+  -p 5000:5000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v openvm_data:/app/data \
+  --privileged \
+  galtechdev/openvm:latest</code>
+                    </div>
+
+                    <p style="margin-top: var(--space-lg); text-align: center;">
+                        <a href="https://hub.docker.com/r/galteck/openvm" target="_blank" class="btn btn-primary"
+                            style="width: 100%;">
+                            <i class="ri-docker-fill"></i> Voir sur Docker Hub
+                        </a>
+                    </p>
+                </div>
+
+                <!-- Manual Installation -->
+                <div class="card">
+                    <div
+                        style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-lg);">
+                        <span style="font-size: 2rem;">📦</span>
+                        <div>
+                            <h3 class="card-title" style="margin-bottom: 0;">Installation Manuelle</h3>
+                            <small style="color: var(--text-muted);">Pour développeurs</small>
+                        </div>
+                    </div>
+
+                    <div class="code-block" style="margin-bottom: var(--space-md);">
+                        <code># 1. Cloner le repo
+git clone https://github.com/GalTechDev/OpenVM.git
+cd OpenVM
+
+# 2. Installer les dépendances
+pip install -r requirements.txt
+
+# 3. Initialiser la base de données
+python init_db.py
+
+# 4. Lancer l'application
+./start.sh</code>
+                    </div>
+
+                    <p style="text-align: center; margin: 0;">
+                        <a href="https://github.com/GalTechDev/OpenVM" target="_blank" class="btn btn-secondary"
+                            style="width: 100%;">
+                            <i class="ri-github-line"></i> Voir sur GitHub
+                        </a>
+                    </p>
+                </div>
+            </div>
+
+            <p style="text-align: center; margin-top: var(--space-xl); color: var(--text-secondary);">
+                <strong>Accédez à:</strong> <code style="color: var(--cloud-primary);">http://localhost:5000</code>
+            </p>
+        </div>
+    </section>
+
+    <!-- Screenshots Section -->
+    <section class="architecture" id="screenshots">
+        <div class="container">
+            <div class="section-header">
+                <span class="badge">Interface</span>
+                <h2>Screenshots</h2>
+                <p>Aperçu de l'interface utilisateur</p>
+            </div>
+
+            <div class="grid-2">
+                <div class="card" style="text-align: center;">
+                    <h3 class="card-title">Dashboard Utilisateur</h3>
+                    <p>Terminal SSH, explorateur de fichiers et logs en temps réel</p>
+                </div>
+                <div class="card" style="text-align: center;">
+                    <h3 class="card-title">Panneau Admin</h3>
+                    <p>Gestion des utilisateurs, conteneurs et ressources système</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p class="footer-text">
+                <strong>OpenVM</strong> — Projet Open Source
+            </p>
+            <div class="footer-links">
+                <a href="https://github.com/GalTechDev/OpenVM" target="_blank">
+                    <i class="ri-github-fill"></i> GitHub
+                </a>
+                <a href="https://github.com/GalTechDev/OpenVM/issues" target="_blank">
+                    <i class="ri-bug-line"></i> Issues
+                </a>
+                <a href="https://github.com/GalTechDev/OpenVM/blob/main/LICENSE" target="_blank">
+                    <i class="ri-file-text-line"></i> License
+                </a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

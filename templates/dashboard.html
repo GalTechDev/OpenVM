@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenVM | Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <!-- Xterm.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Overlay for mobile sidebar -->
+        <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="ri-cloud-windy-line"></i> <span>OpenVM</span>
+                </div>
+                <!-- Close Button Mobile -->
+                <button class="menu-toggle" onclick="toggleSidebar()"
+                    style="font-size: 1.2rem; color: var(--text-secondary); margin-left: auto; display: none;"> <i
+                        class="ri-close-line"></i> </button>
+            </div>
+            {% if session.get('is_blocked') %}
+            <div class="alert-danger"
+                style="margin: 1rem; padding: 0.5rem; border-radius: 4px; background: #ef4444; color: white;">
+                <small><i class="ri-lock-line"></i> Account Blocked</small>
+            </div>
+            {% endif %}
+            <nav>
+                <a href="#" class="active"><i class="ri-dashboard-line"></i> Dashboard</a>
+                {% if is_admin %}
+                <a href="/admin"><i class="ri-admin-line"></i> Admin Panel</a>
+                {% endif %}
+                <a href="/settings"><i class="ri-settings-line"></i> Settings</a>
+            </nav>
+            <div class="user-profile">
+                <div class="user-avatar {% if is_admin %}admin-avatar{% endif %}">{{ username[0] | upper
+                    }}</div>
+                <div class="user-info">
+                    <span class="name">{{ username }}</span>
+                    <span class="role">{% if is_admin %}Administrator{% else %}User{% endif %}</span>
+                </div>
+                <a href="/logout" class="logout"><i class="ri-logout-box-r-line"></i></a>
+            </div>
+
+
+        </aside>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loader-container">
+                <div class="loader-spinner"></div>
+                <p>Loading...</p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% if is_blocked %}
+            <div class="alert alert-danger"
+                style="margin-bottom: 1rem; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); padding: 1rem; border-radius: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="ri-forbid-2-line"></i>
+                <strong>Account Blocked:</strong> Your account has been restricted by an administrator. You cannot
+                modify containers or access files.
+            </div>
+            {% endif %}
+
+            <header>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <button class="menu-toggle" onclick="toggleSidebar()"><i class="ri-menu-line"></i></button>
+                    <h2>Dashboard</h2>
+                </div>
+                {% if current_container %}
+                <div class="status-badge {{ current_container.status }}" id="status-badge">
+                    <span class="dot"></span> {{ current_container.status }}
+                </div>
+                <!-- Hidden input for JS -->
+                <input type="hidden" id="activeContainerId" value="{{ current_container.id }}">
+                {% endif %}
+            </header>
+
+            <div class="content-grid">
+
+                <!-- Container Selection -->
+                <div class="card container-selection-card" style="grid-column: 1 / -1;">
+                    <h3><i class="ri-server-line"></i> Select Container</h3>
+                    {% if containers %}
+                    <div class="container-grid">
+                        {% for c in containers %}
+                        <a href="?target={{ c.id }}"
+                            class="container-card-item {% if current_container.id == c.id %}active{% endif %}">
+                            <div class="container-card-header">
+                                <span class="container-name">{{ c.name }}</span>
+                                <div class="status-dot {{ c.status }}"></div>
+                            </div>
+                            <span class="mono container-id">{{ c.id[:12] }}</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p style="color: var(--text-secondary);">No containers assigned.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchDashboardTab('console')"><i
+                            class="ri-terminal-box-line"></i> Terminal</button>
+                    <button class="tab-btn" onclick="switchDashboardTab('files')"><i class="ri-folder-line"></i>
+                        Files</button>
+                    <button class="tab-btn" onclick="switchDashboardTab('settings')"><i class="ri-settings-3-line"></i>
+                        Settings</button>
+                </div>
+
+                <!-- Console Tab -->
+                <div id="tab-console" class="tab-content" style="display: block;">
+                    {% if not is_blocked %}
+                    <div class="card controls-card" style="margin-bottom: 1.5rem;">
+                        <h3><i class="ri-remote-control-line"></i> Container Actions</h3>
+                        <div class="actions">
+                            <button class="btn btn-success" onclick="controlContainer('start')">
+                                <i class="ri-play-fill"></i> Start
+                            </button>
+                            <button class="btn btn-warning" onclick="controlContainer('restart')">
+                                <i class="ri-restart-line"></i> Restart
+                            </button>
+                            <button class="btn btn-danger" onclick="controlContainer('stop')">
+                                <i class="ri-stop-fill"></i> Stop
+                            </button>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <!-- Terminal -->
+                    {% if is_blocked %}
+                    <div class="card"
+                        style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; color: var(--text-secondary);">
+                        <i class="ri-lock-2-line"
+                            style="font-size: 3rem; margin-bottom: 1rem; color: var(--danger);"></i>
+                        <h3>Access Restricted</h3>
+                        <p>Terminal is unavailable while your account is blocked.</p>
+                    </div>
+                    {% else %}
+                    <div class="card terminal-card"
+                        style="padding: 0; min-height: 500px; display: flex; flex-direction: column;">
+                        <div class="terminal-tabs" id="terminalTabs">
+                            <!-- Tabs will be injected here -->
+                            <button class="add-tab-btn" onclick="terminalManager.addTab()"
+                                title="New Terminal">+</button>
+                        </div>
+                        <div id="terminal-wrapper" style="position: relative; flex: 1; background: #0a0a0a;">
+                            <!-- Terminals mounted here -->
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- File Explorer Tab -->
+                <div id="tab-files" class="tab-content" style="display: none;">
+                    {% if is_blocked %}
+                    <div class="card"
+                        style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; color: var(--text-secondary);">
+                        <i class="ri-lock-2-line"
+                            style="font-size: 3rem; margin-bottom: 1rem; color: var(--danger);"></i>
+                        <h3>Access Restricted</h3>
+                        <p>Files cannot be accessed while your account is blocked.</p>
+                    </div>
+                    {% else %}
+                    <div class="card file-explorer-card" id="fileExplorerCard" style="display: block;">
+                        <div class="file-explorer-header">
+                            <h3><i class="ri-folder-open-line"></i> File Explorer</h3>
+                            <div class="file-explorer-actions">
+                                <button class="btn btn-sm btn-outline" onclick="loadFiles(currentPath)"><i
+                                        class="ri-refresh-line"></i></button>
+                                <button class="btn btn-sm btn-outline" onclick="openNewFolderModal()"
+                                    title="New Folder"><i class="ri-folder-add-line"></i></button>
+                                <label class="btn btn-sm btn-primary" style="cursor: pointer; margin: 0;">
+                                    <i class="ri-upload-cloud-line"></i> Upload
+                                    <input type="file" id="fileUploadInput" style="display: none;"
+                                        onchange="uploadFile()">
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Breadcrumbs -->
+                        <div class="breadcrumbs" id="fileBreadcrumbs">
+                            <span class="crumb" onclick="loadFiles('/')">/</span>
+                        </div>
+
+                        <!-- File List -->
+                        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                            <table class="user-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Size</th>
+                                        <th>Permissions</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fileListBody">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="tab-settings" class="tab-content" style="display: none;">
+                    {% if is_blocked %}
+                    <div class="card"
+                        style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; color: var(--text-secondary);">
+                        <i class="ri-lock-2-line"
+                            style="font-size: 3rem; margin-bottom: 1rem; color: var(--danger);"></i>
+                        <h3>Access Restricted</h3>
+                        <p>Settings are unavailable while your account is blocked.</p>
+                    </div>
+                    {% else %}
+                    <div class="card" style="max-width: 600px;">
+                        <h3>Container Configuration</h3>
+
+                        <div class="form-group">
+                            <label>Port Mappings (host:container)</label>
+                            <input type="text" id="settingsPorts" placeholder="e.g. 8080:80, 3000:3000">
+                            <small>Comma separated list of port mappings.</small>
+                        </div>
+
+                        <button class="btn btn-primary" onclick="updatePorts()">
+                            UPDATE CONFIGURATION
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <!-- File Explorer Modals -->
+    <div id="newFolderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>New Folder</h3>
+                <span class="close-btn" onclick="closeFileModal('newFolderModal')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Folder Name</label>
+                    <input type="text" id="newFolderName" placeholder="e.g. src">
+                </div>
+                <button class="btn btn-primary btn-block" onclick="createFolder()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="renameModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Rename</h3>
+                <span class="close-btn" onclick="closeFileModal('renameModal')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="renameOldPath">
+                <div class="form-group">
+                    <label>New Name</label>
+                    <input type="text" id="renameNewName">
+                </div>
+                <button class="btn btn-primary btn-block" onclick="submitRename()">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 id="confirmTitle">Confirm Action</h3>
+                <span class="close-btn" onclick="closeConfirmModal(false)">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage" style="margin-bottom: 1.5rem; color: var(--text-secondary);">Are you sure?</p>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="btn btn-outline btn-block" onclick="closeConfirmModal(false)">Cancel</button>
+                    <button id="confirmBtn" class="btn btn-primary btn-block"
+                        style="margin-top: 0; background: #ef4444; border-color: #ef4444;">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="{{ url_for('static', filename='js/terminal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/file_explorer.js') }}"></script>
+    <script>
+        // Loading overlay is hidden by terminal.js on socket connect
+
+        // Modal Utils
+        let confirmResolve = null;
+
+        function showConfirm(title, message) {
+            return new Promise((resolve) => {
+                document.getElementById('confirmTitle').textContent = title;
+                document.getElementById('confirmMessage').textContent = message;
+
+                const modal = document.getElementById('confirmModal');
+                const btn = document.getElementById('confirmBtn');
+
+                confirmResolve = resolve;
+                modal.style.display = 'block';
+
+                // One-time listener for confirm
+                btn.onclick = () => closeConfirmModal(true);
+            });
+        }
+
+        function closeConfirmModal(result) {
+            document.getElementById('confirmModal').style.display = 'none';
+            if (confirmResolve) {
+                confirmResolve(result);
+                confirmResolve = null;
+            }
+        }
+
+        function toggleSidebar() {
+            document.querySelector('.sidebar').classList.toggle('open');
+            document.querySelector('.sidebar-overlay').classList.toggle('active');
+        }
+
+        function switchDashboardTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            // Show selected
+            document.getElementById('tab-' + tabName).style.display = 'block';
+
+            // Activate button
+            // Find button containing text or icon... simple query
+            // Actually finding the button is hard without ID.
+            const btns = document.querySelectorAll('.tab-btn');
+            btns.forEach(b => {
+                if (b.getAttribute('onclick').includes(tabName)) b.classList.add('active');
+            });
+
+            if (tabName === 'console') {
+                // Resize term
+                if (window.termFit) window.termFit.fit();
+            }
+        }
+
+        async function updatePorts() {
+            const containerId = document.getElementById('activeContainerId').value;
+            const ports = document.getElementById('settingsPorts').value;
+
+            if (!await showConfirm('Update Ports', 'This will recreate the container. Are you sure?')) return;
+
+            fetch('/api/container/update_ports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ container_id: containerId, ports: ports })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) alert(data.error);
+                    else {
+                        alert("Container updated successfully.");
+                        location.reload();
+                    }
+                });
+        }
+    </script>
+</body>
+
+</html>

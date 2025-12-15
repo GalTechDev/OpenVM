@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenVM | Initial Setup</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
+    <style>
+        .setup-container {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 1rem;
+        }
+
+        /* Wizard Header */
+        .wizard-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .wizard-header .logo {
+            font-size: 3rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .wizard-header h1 {
+            margin: 0 0 0.25rem 0;
+            font-size: 1.75rem;
+        }
+
+        .wizard-header p {
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        /* Progress Steps */
+        .wizard-progress {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .step-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.3s;
+        }
+
+        .step-dot.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        .step-dot.completed {
+            background: var(--success);
+            border-color: var(--success);
+            color: white;
+        }
+
+        .step-line {
+            width: 40px;
+            height: 2px;
+            background: var(--border);
+            transition: background 0.3s;
+        }
+
+        .step-line.completed {
+            background: var(--success);
+        }
+
+        /* Wizard Content */
+        .wizard-card {
+            background: var(--bg-card);
+            border-radius: 1rem;
+            border: 1px solid var(--border);
+            padding: 2rem;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .wizard-step {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .wizard-step.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .step-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .step-header .step-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: var(--bg-dark);
+            width: 80px;
+            height: 80px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+        }
+
+        .step-header h2 {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.5rem;
+        }
+
+        .step-header p {
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        /* Mode Cards */
+        .mode-card {
+            background: var(--bg-dark);
+            border: 2px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .mode-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .mode-card.selected {
+            border-color: var(--accent);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .mode-card input[type="radio"] {
+            position: absolute;
+            top: 1.25rem;
+            right: 1.25rem;
+            width: 1.25rem;
+            height: 1.25rem;
+            accent-color: var(--accent);
+        }
+
+        .mode-card-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .mode-card-icon {
+            font-size: 1.75rem;
+        }
+
+        .mode-card-title {
+            font-weight: 700;
+            color: var(--text-primary);
+            font-size: 1.1rem;
+        }
+
+        .mode-card-desc {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-left: 2.75rem;
+            line-height: 1.5;
+        }
+
+        /* Status Card */
+        .status-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1.25rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid transparent;
+        }
+
+        .status-card.success {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .status-card.error {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .status-icon {
+            font-size: 1.5rem;
+            margin-top: 2px;
+        }
+
+        .status-icon.success {
+            color: var(--success);
+        }
+
+        .status-icon.error {
+            color: var(--danger);
+        }
+
+        .status-text h4 {
+            margin: 0 0 0.25rem 0;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .status-text p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* Help Box */
+        .help-box {
+            background: var(--bg-dark);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+        }
+
+        .help-box h4 {
+            margin: 0 0 1rem 0;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .help-box code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .help-box ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .help-box li {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .help-box li i {
+            color: var(--accent);
+        }
+
+        /* Form Styles */
+        .wizard-form .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .wizard-form label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .wizard-form input {
+            width: 100%;
+            padding: 0.875rem;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .wizard-form input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        /* Alert */
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            color: var(--danger);
+            font-size: 0.9rem;
+        }
+
+        /* Footer Buttons */
+        .wizard-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+            font-family: inherit;
+        }
+
+        .btn-back {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .btn-back:hover {
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            border-color: var(--text-secondary);
+        }
+
+        .btn-next {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+
+        .btn-next:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);
+        }
+    </style>
+</head>
+
+<body class="login-body">
+    <div class="setup-container">
+        <!-- Header -->
+        <div class="wizard-header">
+            <div class="logo"><i class="ri-cloud-windy-line"></i></div>
+            <h1>OpenVM Setup</h1>
+            <p>Configure your instance in 3 steps</p>
+        </div>
+
+        <!-- Progress -->
+        <div class="wizard-progress">
+            <div class="progress-step">
+                <div class="step-dot active" id="dot-1">1</div>
+            </div>
+            <div class="step-line" id="line-1"></div>
+            <div class="progress-step">
+                <div class="step-dot" id="dot-2">2</div>
+            </div>
+            <div class="step-line" id="line-2"></div>
+            <div class="progress-step">
+                <div class="step-dot" id="dot-3">3</div>
+            </div>
+        </div>
+
+        <!-- Form -->
+        <form action="/setup" method="POST" id="setupForm">
+            <div class="wizard-card">
+                <!-- Step 1: Deployment Mode -->
+                <div class="wizard-step active" id="step-1">
+                    <div class="step-header">
+                        <div class="step-icon">🚀</div>
+                        <h2>Deployment Mode</h2>
+                        <p>How are you running OpenVM?</p>
+                    </div>
+
+                    <div class="step-content">
+                        <div class="mode-card {{ 'selected' if docker_mode == 'host' else '' }}"
+                            onclick="selectMode('host')">
+                            <input type="radio" name="docker_mode" value="host" {{ 'checked' if docker_mode=='host'
+                                else '' }}>
+                            <div class="mode-card-header">
+                                <span class="mode-card-icon">🖥️</span>
+                                <span class="mode-card-title">Direct on Host</span>
+                            </div>
+                            <div class="mode-card-desc">
+                                Recommended for standard installations. <br>
+                                OpenVM uses <code>sudo docker</code> to manage containers.
+                            </div>
+                        </div>
+
+                        <div class="mode-card {{ 'selected' if docker_mode == 'container' else '' }}"
+                            onclick="selectMode('container')">
+                            <input type="radio" name="docker_mode" value="container" {{ 'checked' if
+                                docker_mode=='container' else '' }}>
+                            <div class="mode-card-header">
+                                <span class="mode-card-icon">🐳</span>
+                                <span class="mode-card-title">Docker Container</span>
+                            </div>
+                            <div class="mode-card-desc">
+                                For Docker-in-Docker or containerized deployments. <br>
+                                Uses <code>docker</code> without sudo (socket mounted).
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wizard-footer">
+                        <div></div>
+                        <button type="button" class="btn btn-next" onclick="nextStep()">
+                            Next Step <i class="ri-arrow-right-line"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: System Check -->
+                <div class="wizard-step" id="step-2">
+                    <div class="step-header">
+                        <div class="step-icon">🔍</div>
+                        <h2>System Check</h2>
+                        <p>Verifying environment requirements</p>
+                    </div>
+
+                    <div class="step-content">
+                        {% if docker_status.ok %}
+                        <div class="status-card success">
+                            <i class="ri-checkbox-circle-fill status-icon success"></i>
+                            <div class="status-text">
+                                <h4>Docker Connected</h4>
+                                <p>Docker daemon is accessible and ready to use.</p>
+                            </div>
+                        </div>
+
+                        <div class="help-box" style="margin-top: 1rem;">
+                            <h4 style="color: var(--success);"><i class="ri-check-double-line"></i> All Systems Go</h4>
+                            <ul>
+                                <li><i class="ri-check-line"></i> Docker Engine v20.10+ detected</li>
+                                <li><i class="ri-check-line"></i> API Connection established</li>
+                                <li><i class="ri-check-line"></i> Permissions verified</li>
+                            </ul>
+                        </div>
+                        {% else %}
+                        <div class="status-card error">
+                            <i class="ri-error-warning-fill status-icon error"></i>
+                            <div class="status-text">
+                                <h4>Docker Not Accessible</h4>
+                                <p>{{ docker_status.message }}</p>
+                            </div>
+                        </div>
+
+                        <div class="help-box">
+                            <h4 style="color: var(--warning);"><i class="ri-tools-line"></i> Troubleshooting</h4>
+                            <ul>
+                                <li><strong>1. Permissions:</strong> <br><code>sudo usermod -aG docker $USER</code></li>
+                                <li><strong>2. Group Update:</strong> <br><code>newgrp docker</code></li>
+                                <li><strong>3. Daemon Status:</strong> <br><code>sudo systemctl start docker</code></li>
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="wizard-footer">
+                        <button type="button" class="btn btn-back" onclick="prevStep()">
+                            <i class="ri-arrow-left-line"></i> Back
+                        </button>
+                        <button type="button" class="btn btn-next" onclick="nextStep()">
+                            Next Step <i class="ri-arrow-right-line"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Create Admin -->
+                <div class="wizard-step" id="step-3">
+                    <div class="step-header">
+                        <div class="step-icon">👤</div>
+                        <h2>Admin Account</h2>
+                        <p>Create your superuser credentials</p>
+                    </div>
+
+                    <div class="step-content">
+                        {% if errors %}
+                        <div class="alert-error">
+                            <i class="ri-error-warning-line"></i>
+                            {% for error in errors %}
+                            <span>{{ error }}</span><br>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        <div class="wizard-form">
+                            <div class="form-group">
+                                <label for="username">Username</label>
+                                <input type="text" id="username" name="username" required placeholder="e.g. admin"
+                                    value="{{ username or '' }}" minlength="3">
+                            </div>
+                            <div class="form-group">
+                                <label for="password">Password</label>
+                                <input type="password" id="password" name="password" required
+                                    placeholder="Minimum 6 characters" minlength="6">
+                            </div>
+                            <div class="form-group">
+                                <label for="confirm_password">Confirm Password</label>
+                                <input type="password" id="confirm_password" name="confirm_password" required
+                                    placeholder="Repeat password">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wizard-footer">
+                        <button type="button" class="btn btn-back" onclick="prevStep()">
+                            <i class="ri-arrow-left-line"></i> Back
+                        </button>
+                        <button type="submit" class="btn btn-next">
+                            <i class="ri-rocket-fill"></i> Finish Setup
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        const totalSteps = 3;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Handle pre-selected mode styles
+            const selectedMode = document.querySelector('input[name="docker_mode"]:checked');
+            if (selectedMode) {
+                selectMode(selectedMode.value);
+            } else {
+                // Default to host
+                selectMode('host');
+            }
+
+            // If errors exist (server-side validation), jump to step 3
+            {% if errors %}
+            goToStep(3);
+            {% endif %}
+        });
+
+        function selectMode(mode) {
+            document.querySelectorAll('.mode-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            const input = document.querySelector(`input[value="${mode}"]`);
+            if (input) {
+                input.checked = true;
+                input.closest('.mode-card').classList.add('selected');
+            }
+        }
+
+        function updateProgress() {
+            // Update dots
+            for (let i = 1; i <= totalSteps; i++) {
+                const dot = document.getElementById(`dot-${i}`);
+                const line = document.getElementById(`line-${i}`);
+
+                dot.classList.remove('active', 'completed');
+
+                if (i < currentStep) {
+                    dot.classList.add('completed');
+                    dot.innerHTML = '<i class="ri-check-line"></i>';
+                } else if (i === currentStep) {
+                    dot.classList.add('active');
+                    dot.textContent = i;
+                } else {
+                    dot.textContent = i;
+                }
+
+                if (line) {
+                    line.classList.toggle('completed', i < currentStep);
+                }
+            }
+
+            // Show current step
+            document.querySelectorAll('.wizard-step').forEach((step, idx) => {
+                step.classList.toggle('active', idx + 1 === currentStep);
+            });
+        }
+
+        function goToStep(step) {
+            currentStep = step;
+            updateProgress();
+        }
+
+        function nextStep() {
+            if (currentStep < totalSteps) {
+                currentStep++;
+                updateProgress();
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 1) {
+                currentStep--;
+                updateProgress();
+            }
+        }
+    </script>
+</body>
+
+</html>

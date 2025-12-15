@@ -1,0 +1,27 @@
+# OpenVM - Docker Compose Configuration
+# Use this to quickly deploy OpenVM with Docker
+
+version: '3.8'
+
+services:
+  openvm:
+    image: galtechdev/openvm:latest
+    # Or build locally:
+    # build: .
+    container_name: openvm
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persist database
+      - openvm_data:/app/data
+    environment:
+      - FLASK_ENV=production
+    # Required for Docker-in-Docker operations
+    privileged: true
+
+volumes:
+  openvm_data:
+    name: openvm_data
