@@ -12,3 +12,6 @@ asyncssh
 
 # System Monitoring
 psutil
+
+# Windows Terminal Support
+pywinpty; sys_platform == 'win32'
