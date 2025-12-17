@@ -3,6 +3,10 @@ import subprocess
 import json
 import shlex
 import os
+import platform
+
+# Detect OS
+IS_WINDOWS = platform.system().lower() == 'windows'
 
 CONFIG_PATH = 'data/config.json'
 
@@ -17,7 +21,7 @@ def get_config():
     # Default config
     return {
         "docker_mode": "host",  # "host" (with sudo) or "container" (no sudo)
-        "use_sudo": True
+        "use_sudo": not IS_WINDOWS # Default to True on Linux, False on Windows
     }
 
 def save_config(config):
@@ -32,11 +36,12 @@ class DockerHelper:
         config = get_config()
         
         # Build command based on mode
-        if config.get("docker_mode") == "container" or not config.get("use_sudo", True):
-            # Container mode - no sudo needed (socket mounted)
+        # On Windows, never use sudo.
+        if IS_WINDOWS or config.get("docker_mode") == "container" or not config.get("use_sudo", True):
+            # Container mode or Windows - no sudo needed
             full_cmd = ["docker"] + cmd_list
         else:
-            # Host mode - use sudo
+            # Host mode on Linux - use sudo
             full_cmd = ["sudo", "docker"] + cmd_list
         
         try:
@@ -79,7 +84,11 @@ class DockerHelper:
     def create_network(network_name):
         try:
             # Check if exists
-            check = subprocess.run(["sudo", "docker", "network", "inspect", network_name], capture_output=True)
+            if IS_WINDOWS:
+                check = subprocess.run(["docker", "network", "inspect", network_name], capture_output=True)
+            else:
+                check = subprocess.run(["sudo", "docker", "network", "inspect", network_name], capture_output=True)
+                
             if check.returncode != 0:
                 DockerHelper.run_command(["network", "create", network_name])
         except:
@@ -284,7 +293,10 @@ class DockerHelper:
 
     @staticmethod
     def read_file_bytes(container_id, file_path):
-        cmd = ["sudo", "docker", "exec", container_id, "cat", file_path]
+        if IS_WINDOWS:
+            cmd = ["docker", "exec", container_id, "cat", file_path]
+        else:
+            cmd = ["sudo", "docker", "exec", container_id, "cat", file_path]
         result = subprocess.run(cmd, capture_output=True, check=True)
         return result.stdout
 
@@ -307,7 +319,10 @@ class DockerHelper:
     def get_archive_cmd(container_id, path):
         # Returns command to get a tar stream of the path.
         # "docker cp container:path -" dumps tar to stdout
-        return ["sudo", "docker", "cp", f"{container_id}:{path}", "-"]
+        if IS_WINDOWS:
+            return ["docker", "cp", f"{container_id}:{path}", "-"]
+        else:
+            return ["sudo", "docker", "cp", f"{container_id}:{path}", "-"]
 
     # Volume Management
     @staticmethod
@@ -354,24 +369,25 @@ class DockerHelper:
 
     @staticmethod
     def get_volume_size(volume_name):
-        """Get volume size in MB using du command on mountpoint."""
+        """Get volume size in MB using a temporary container."""
         try:
-            # Get mountpoint from inspect
-            info = DockerHelper.inspect_volume(volume_name)
-            if not info or 'Mountpoint' not in info:
-                return 0
+            # Use alpine to check size. Works on Linux, Windows, Mac.
+            # docker run --rm -v volume:/data alpine du -sk /data
+            cmd = [
+                "run", "--rm", 
+                "-v", f"{volume_name}:/data", 
+                "alpine", 
+                "du", "-sk", "/data"
+            ]
             
-            mountpoint = info['Mountpoint']
-            # Use du to get size in KB, then convert to MB
-            result = subprocess.run(
-                ["sudo", "du", "-sk", mountpoint],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                size_kb = int(result.stdout.split()[0])
-                return size_kb / 1024  # Convert to MB
+            output = DockerHelper.run_command(cmd)
+            # Output format: "size_kb    /data"
+            if output:
+                size_kb = int(output.split()[0])
+                return size_kb / 1024 # Convert to MB
             return 0
-        except:
+        except Exception as e:
+            # print(f"Error getting volume size: {e}") 
             return 0
 
     @staticmethod

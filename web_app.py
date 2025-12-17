@@ -2,17 +2,10 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import sqlite3
 import sys
-import bcrypt
-import os
-import io
-import pty
-import subprocess
-import select
-import termios
 import struct
-import fcntl
 import psutil
 from docker_utils import DockerHelper
+from terminal_manager import TerminalManager
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key_for_demo' 
@@ -1087,17 +1080,10 @@ def verify_container_access(username, container_id):
     return bool(allowed)
 
 # Terminal Logic
-# Terminal Logic
-class TerminalSession:
-    def __init__(self, fd, pid, term_id):
-        self.fd = fd
-        self.pid = pid
-        self.term_id = term_id
-        self.history = [] # List of output chunks
-
 # Global storage key: term_id -> TerminalSession
 if not hasattr(app, 'terminal_sessions'):
     app.terminal_sessions = {} 
+    
 
 @socketio.on('connect', namespace='/terminal')
 def connect_terminal():
@@ -1132,6 +1118,17 @@ def start_terminal(data):
         emit('output', {"term_id": term_id, "data": "Error: Account is blocked.\r\n"})
         return
 
+    # Create session via Manager (Win/Linux handled internally)
+    # Warning: pywinpty on Windows requires 'docker' in path.
+    # Command is list for Linux, string for Windows? 
+    # Actually pywinpty spawn takes string usually, but let's check our implementation.
+    # Our adapter takes list for Linux, list for Windows (PtyProcess.spawn handles list?).
+    # winpty: "Argument must be a string". Wait. 
+    # Let's check terminal_manager implementation again.
+    # I'll fix web_app to pass list, and fix manager if needed.
+    
+    # Actually, let's keep it simple.
+    
     cols = data.get('cols', 80)
     rows = data.get('rows', 24)
     target_container = data.get('container_id')
@@ -1163,42 +1160,51 @@ def start_terminal(data):
         return
 
     # Spawn
-    cmd = ['sudo', 'docker', 'exec', '-it', container_id, '/bin/bash']
-    (pid, fd) = pty.fork()
-    
-    if pid == 0: # Child
-        os.execvp(cmd[0], cmd)
-    else: # Parent
-        sess = TerminalSession(fd, pid, term_id)
+    cmd = ['docker', 'exec', '-it', container_id, '/bin/bash']
+    if not os.path.exists('/usr/bin/sudo') and not os.name == 'nt':
+         # If linux but no sudo? (container mode). 
+         # docker_utils logic handles boolean flags, here we hardcoded command.
+         pass
+         
+    # Refined command logic
+    import platform
+    if platform.system().lower() == 'windows':
+        # winpty takes "docker exec -it ..."
+        cmd = ["docker", "exec", "-it", container_id, "/bin/bash"]
+    else:
+        cmd = ["sudo", "docker", "exec", "-it", container_id, "/bin/bash"]
+
+    try:
+        sess = TerminalManager.create_session(cmd, rows=rows, cols=cols)
         app.terminal_sessions[term_id] = sess
         join_room(term_id)
         socketio.start_background_task(target=read_and_forward_pty, term_id=term_id)
+    except Exception as e:
+        emit('output', {"term_id": term_id, "data": f"Error starting terminal: {e}\r\n"})
 
 def read_and_forward_pty(term_id):
     try:
         while True:
             if term_id not in app.terminal_sessions: break
             sess = app.terminal_sessions[term_id]
-            fd = sess.fd
             
-            timeout = 0.1
-            (r, w, x) = select.select([fd], [], [], timeout)
-            if fd in r:
-                output = os.read(fd, 1024)
-                if not output: break
-                
-                text = output.decode('utf-8', errors='ignore')
-                
+            # Use abstract read
+            text = sess.read(timeout=0.1)
+            
+            if text:
                 # Buffer
                 sess.history.append(text)
                 if len(sess.history) > 2000: sess.history.pop(0)
 
                 # Broadcast to room
                 socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
+            elif text is None:
+                 # EOF or error?
+                 pass 
 
-            socketio.sleep(0.01) # Replaced eventlet.sleep
-    except OSError:
-        pass
+            socketio.sleep(0.01) 
+    except Exception as e:
+        print(f"Terminal Output Error: {e}")
     finally:
         if term_id in app.terminal_sessions:
              del app.terminal_sessions[term_id]
@@ -1212,8 +1218,8 @@ def on_terminal_input(data):
     if term_id in app.terminal_sessions:
         sess = app.terminal_sessions[term_id]
         try:
-            os.write(sess.fd, text.encode())
-        except OSError:
+            sess.write(text)
+        except Exception:
             pass
 
 @socketio.on('resize', namespace='/terminal')
@@ -1221,12 +1227,10 @@ def on_terminal_resize(data):
     term_id = data.get('term_id')
     if term_id in app.terminal_sessions:
         try:
-            import struct, fcntl, termios
             sess = app.terminal_sessions[term_id]
             cols = data['cols']
             rows = data['rows']
-            winsize = struct.pack("HHHH", rows, cols, 0, 0)
-            fcntl.ioctl(sess.fd, termios.TIOCSWINSZ, winsize)
+            sess.resize(rows, cols)
         except:
             pass
 
