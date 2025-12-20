@@ -3,6 +3,8 @@ import os
 import sys
 import platform
 import struct
+import queue
+import threading
 
 # OS Detection
 IS_WINDOWS = platform.system().lower() == 'windows'
@@ -30,7 +32,7 @@ class TerminalSession:
         return self.fd
 
 if IS_WINDOWS:
-    # Windows Implementation using pywinpty
+    # Windows Implementation using pywinpty with threaded reader
     try:
         from winpty import PtyProcess
     except ImportError:
@@ -39,37 +41,65 @@ if IS_WINDOWS:
     class WindowsTerminalSession(TerminalSession):
         def __init__(self, argv, rows, cols):
             if not PtyProcess:
-                raise ImportError("pywinpty not installed")
+                raise ImportError("pywinpty not installed. Run: pip install pywinpty")
+            
+            super().__init__(None, None)
             
             # PtyProcess spawn
             self.proc = PtyProcess.spawn(argv, dimensions=(rows, cols))
-            super().__init__(None, None) # No FD or standard PID exposed easily
+            self._closed = False
+            self._output_queue = queue.Queue()
+            
+            # Start background thread for reading (blocking read won't block gevent)
+            self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+            self._reader_thread.start()
+        
+        def _reader_loop(self):
+            """Background thread that reads from pywinpty and puts data into queue."""
+            try:
+                while not self._closed:
+                    try:
+                        data = self.proc.read(1024)
+                        if data:
+                            self._output_queue.put(data)
+                        else:
+                            # EOF
+                            self._output_queue.put(None)
+                            break
+                    except Exception:
+                        self._output_queue.put(None)
+                        break
+            except Exception:
+                pass
             
         def read(self, timeout=0.1):
+            """Non-blocking read from queue."""
             try:
-                # pywinpty read might block. 
-                # We try to read. If it fails, we assume closed.
-                # Note: pywinpty doesn't support 'timeout' arg natively in read() usually.
-                # We can't easily peek.
-                # We rely on the thread in web_app to just blocked-wait on this?
-                # If we block, we can't process other events easily (though we have separate thread per term).
-                # Let's try to read.
-                return self.proc.read(1024)
-            except Exception:
-                # EOF or error
-                return None
+                data = self._output_queue.get(timeout=timeout)
+                return data  # Could be string or None (EOF)
+            except queue.Empty:
+                return ""  # No data yet
         
         def write(self, data):
-            self.proc.write(data)
+            if not self._closed:
+                self.proc.write(data)
             
         def resize(self, rows, cols):
-            self.proc.set_winsize(rows, cols)
+            if not self._closed:
+                try:
+                    self.proc.setwinsize(rows, cols)
+                except Exception:
+                    pass
             
         def close(self):
-            self.proc.close()
+            self._closed = True
+            try:
+                self.proc.close()
+            except Exception:
+                pass
             
         def get_fd(self):
-            return None # Not selectable
+            return None
 
 else:
     # Linux Implementation
@@ -80,13 +110,10 @@ else:
     
     class LinuxTerminalSession(TerminalSession):
         def __init__(self, cmd, rows, cols):
-            # pty.fork()
             pid, fd = pty.fork()
-            if pid == 0: # Child
-                # Resize before exec? Or just rely on shell
-                # Execute
+            if pid == 0:  # Child
                 os.execvp(cmd[0], cmd)
-            else: # Parent
+            else:  # Parent
                 super().__init__(fd, pid)
                 self.resize(rows, cols)
                 
@@ -110,8 +137,10 @@ else:
             fcntl.ioctl(self.fd, termios.TIOCSWINSZ, winsize)
             
         def close(self):
-            # os.close(self.fd) # Handled by process exit?
-            pass
+            try:
+                os.close(self.fd)
+            except Exception:
+                pass
 
 class TerminalManager:
     @staticmethod
