@@ -6,6 +6,16 @@ import os
 import bcrypt
 import struct
 import psutil
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger('web_app')
+
 try:
     import pty
     import termios
@@ -1099,18 +1109,25 @@ if not hasattr(app, 'terminal_sessions'):
 
 @socketio.on('connect', namespace='/terminal')
 def connect_terminal():
+    logger.debug(f"Terminal connect: session={session.get('username', 'NONE')}")
     if 'username' not in session:
+        logger.warning("Terminal connect rejected: no session")
         return False
 
 @socketio.on('disconnect', namespace='/terminal')
 def disconnect_terminal():
+    logger.debug("Terminal disconnect")
     pass # Rooms handle cleanup automatically for broadcasting
 
 @socketio.on('start_terminal', namespace='/terminal')
 def start_terminal(data):
-    if 'username' not in session: return
+    logger.info(f"start_terminal called with data keys: {data.keys() if data else 'None'}")
+    if 'username' not in session: 
+        logger.warning("start_terminal rejected: no session")
+        return
 
     term_id = data.get('term_id')
+    logger.debug(f"start_terminal: term_id={term_id}")
     if not term_id:
         emit('output', "Error: No terminal ID provided.\r\n")
         return
@@ -1198,30 +1215,45 @@ def start_terminal(data):
     else:
         cmd = ["sudo", docker_path, "exec", "-it", container_id, "/bin/bash"]
 
+    logger.info(f"Creating terminal session for container {container_id}")
     try:
         sess = TerminalManager.create_session(cmd, rows=rows, cols=cols)
+        logger.info(f"Terminal session created successfully")
         app.terminal_sessions[term_id] = sess
         join_room(term_id)
+        logger.debug(f"Starting background task for term_id={term_id}")
         socketio.start_background_task(target=read_and_forward_pty, term_id=term_id)
+        logger.debug(f"Background task started")
     except Exception as e:
+        logger.error(f"Error starting terminal: {e}")
         emit('output', {"term_id": term_id, "data": f"Error starting terminal: {e}\r\n"})
 
 def read_and_forward_pty(term_id):
+    logger.info(f"read_and_forward_pty: starting for term_id={term_id}")
     try:
+        loop_count = 0
         while True:
-            if term_id not in app.terminal_sessions: break
+            if term_id not in app.terminal_sessions: 
+                logger.debug(f"read_and_forward_pty: term_id {term_id} not in sessions, breaking")
+                break
             sess = app.terminal_sessions[term_id]
             
             # Use abstract read
             # Returns: data string (has data), "" (no data yet), None (EOF/error)
             text = sess.read(timeout=0.1)
+            loop_count += 1
+            
+            if loop_count % 100 == 0:
+                logger.debug(f"read_and_forward_pty: loop {loop_count}, last read type: {type(text)}")
             
             if text is None:
                 # EOF or error
+                logger.info(f"read_and_forward_pty: EOF/error for term_id={term_id}")
                 socketio.emit('output', {"term_id": term_id, "data": "\r\n[Session Closed]\r\n"}, room=term_id, namespace='/terminal')
                 break
             elif text:
                 # Has data
+                logger.debug(f"read_and_forward_pty: got {len(text)} chars")
                 sess.history.append(text)
                 if len(sess.history) > 2000: sess.history.pop(0)
                 socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
@@ -1229,23 +1261,25 @@ def read_and_forward_pty(term_id):
 
             socketio.sleep(0.01) 
     except Exception as e:
-        print(f"Terminal Output Error: {e}")
+        logger.error(f"Terminal Output Error: {e}")
     finally:
+        logger.info(f"read_and_forward_pty: cleaning up term_id={term_id}")
         if term_id in app.terminal_sessions:
              del app.terminal_sessions[term_id]
 
 @socketio.on('input', namespace='/terminal')
 def on_terminal_input(data):
-    # data = { term_id, data }
     term_id = data.get('term_id')
     text = data.get('data')
+    logger.debug(f"on_terminal_input: term_id={term_id}, text_len={len(text) if text else 0}")
     
     if term_id in app.terminal_sessions:
         sess = app.terminal_sessions[term_id]
         try:
             sess.write(text)
-        except Exception:
-            pass
+            logger.debug(f"on_terminal_input: wrote successfully")
+        except Exception as e:
+            logger.error(f"on_terminal_input: write error: {e}")
 
 @socketio.on('resize', namespace='/terminal')
 def on_terminal_resize(data):
