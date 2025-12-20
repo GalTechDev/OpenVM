@@ -1238,14 +1238,12 @@ def start_terminal(data):
         emit('output', {"term_id": term_id, "data": ""})
         logger.debug(f"Sent initial empty output to client")
         
-        import sys
-        print(f"[PRINT] About to create thread for {term_id}", flush=True)
-        import threading
-        reader_thread = threading.Thread(target=read_and_forward_pty, args=(term_id,), daemon=True)
-        print(f"[PRINT] Thread created, about to start", flush=True)
-        reader_thread.start()
-        print(f"[PRINT] Thread started", flush=True)
-        logger.debug(f"Background thread started")
+        # Use _thread directly to bypass gevent monkey-patching
+        import _thread
+        print(f"[PRINT] About to start thread with _thread for {term_id}", flush=True)
+        _thread.start_new_thread(read_and_forward_pty, (term_id,))
+        print(f"[PRINT] _thread.start_new_thread returned", flush=True)
+        logger.debug(f"Background thread started via _thread")
         
     except Exception as e:
         logger.error(f"Error starting terminal: {e}")
