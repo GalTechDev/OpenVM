@@ -1287,11 +1287,15 @@ def read_and_forward_pty(term_id):
                 socketio.emit('output', {"term_id": term_id, "data": "\r\n[Session Closed]\r\n"}, room=term_id, namespace='/terminal')
                 break
             elif text:
-                # Has data
-                logger.debug(f"read_and_forward_pty: got {len(text)} chars")
-                sess.history.append(text)
-                if len(sess.history) > 2000: sess.history.pop(0)
-                socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
+                # Filter out Device Attributes response sequences (e.g. ESC[?1;2c)
+                import re
+                text = re.sub(r'\x1b\[\??[\d;]*c', '', text)
+                
+                if text:  # Only emit if there's still content after filtering
+                    logger.debug(f"read_and_forward_pty: got {len(text)} chars")
+                    sess.history.append(text)
+                    if len(sess.history) > 2000: sess.history.pop(0)
+                    socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
             # else: empty string, no data yet, continue loop
 
             socketio.sleep(0.01) 
