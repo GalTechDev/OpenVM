@@ -1238,14 +1238,11 @@ def start_terminal(data):
         emit('output', {"term_id": term_id, "data": ""})
         logger.debug(f"Sent initial empty output to client")
         
-        logger.debug(f"Starting background task for term_id={term_id}")
-        socketio.start_background_task(target=read_and_forward_pty, term_id=term_id)
-        logger.debug(f"Background task started")
-        
-        # Force gevent to yield and schedule other greenlets
-        import gevent
-        gevent.sleep(0)
-        logger.debug(f"Yielded to event loop")
+        logger.debug(f"Starting background thread for term_id={term_id}")
+        import threading
+        reader_thread = threading.Thread(target=read_and_forward_pty, args=(term_id,), daemon=True)
+        reader_thread.start()
+        logger.debug(f"Background thread started")
         
     except Exception as e:
         logger.error(f"Error starting terminal: {e}")
@@ -1286,7 +1283,8 @@ def read_and_forward_pty(term_id):
                 socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
             # else: empty string, no data yet, continue loop
 
-            socketio.sleep(0.01) 
+            import time
+            time.sleep(0.01) 
     except Exception as e:
         logger.error(f"Terminal Output Error: {e}")
     finally:
