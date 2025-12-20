@@ -47,18 +47,17 @@ if IS_WINDOWS:
             
         def read(self, timeout=0.1):
             try:
-                # pywinpty read is blocking?
-                # It has a read(bytes) method.
-                # We can check if isalive?
-                # Actually, there is no easy non-blocking read with timeout in pywinpty API directly
-                # unless we assume it returns empty if no data?
-                # Documentation says "Read at most length bytes from the pseudo terminal"
-                # It might block.
-                # Use a small read size or check flag?
-                # Actually, let's just return what we can.
+                # pywinpty read might block. 
+                # We try to read. If it fails, we assume closed.
+                # Note: pywinpty doesn't support 'timeout' arg natively in read() usually.
+                # We can't easily peek.
+                # We rely on the thread in web_app to just blocked-wait on this?
+                # If we block, we can't process other events easily (though we have separate thread per term).
+                # Let's try to read.
                 return self.proc.read(1024)
             except Exception:
-                return ""
+                # EOF or error
+                return None
         
         def write(self, data):
             self.proc.write(data)
