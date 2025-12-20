@@ -1221,9 +1221,19 @@ def start_terminal(data):
         logger.info(f"Terminal session created successfully")
         app.terminal_sessions[term_id] = sess
         join_room(term_id)
+        
+        # Emit immediately to confirm to client
+        emit('output', {"term_id": term_id, "data": ""})
+        logger.debug(f"Sent initial empty output to client")
+        
         logger.debug(f"Starting background task for term_id={term_id}")
         socketio.start_background_task(target=read_and_forward_pty, term_id=term_id)
         logger.debug(f"Background task started")
+        
+        # Force gevent to yield and schedule other greenlets
+        socketio.sleep(0)
+        logger.debug(f"Yielded to event loop")
+        
     except Exception as e:
         logger.error(f"Error starting terminal: {e}")
         emit('output', {"term_id": term_id, "data": f"Error starting terminal: {e}\r\n"})
