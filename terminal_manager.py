@@ -93,8 +93,14 @@ else:
         def read(self, timeout=0.1):
             (r, w, x) = select.select([self.fd], [], [], timeout)
             if self.fd in r:
-                return os.read(self.fd, 1024).decode('utf-8', errors='ignore')
-            return None
+                try:
+                    data = os.read(self.fd, 1024)
+                    if not data:
+                        return None  # EOF
+                    return data.decode('utf-8', errors='ignore')
+                except OSError:
+                    return None  # Error/closed
+            return ""  # Timeout, no data yet
             
         def write(self, data):
             os.write(self.fd, data.encode())

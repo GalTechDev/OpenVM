@@ -1213,19 +1213,19 @@ def read_and_forward_pty(term_id):
             sess = app.terminal_sessions[term_id]
             
             # Use abstract read
+            # Returns: data string (has data), "" (no data yet), None (EOF/error)
             text = sess.read(timeout=0.1)
             
-            if text:
-                # Buffer
+            if text is None:
+                # EOF or error
+                socketio.emit('output', {"term_id": term_id, "data": "\r\n[Session Closed]\r\n"}, room=term_id, namespace='/terminal')
+                break
+            elif text:
+                # Has data
                 sess.history.append(text)
                 if len(sess.history) > 2000: sess.history.pop(0)
-
-                # Broadcast to room
                 socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
-            elif text is None:
-                 # EOF or error
-                 socketio.emit('output', {"term_id": term_id, "data": "\r\n[Session Closed]\r\n"}, room=term_id, namespace='/terminal')
-                 break
+            # else: empty string, no data yet, continue loop
 
             socketio.sleep(0.01) 
     except Exception as e:
