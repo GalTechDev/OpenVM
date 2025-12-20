@@ -2,8 +2,20 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import sqlite3
 import sys
+import os
+import bcrypt
 import struct
 import psutil
+try:
+    import pty
+    import termios
+    import fcntl
+except ImportError:
+    # Windows compatibility
+    pty = None
+    termios = None
+    fcntl = None
+
 from docker_utils import DockerHelper
 from terminal_manager import TerminalManager
 
@@ -1166,13 +1178,25 @@ def start_terminal(data):
          # docker_utils logic handles boolean flags, here we hardcoded command.
          pass
          
-    # Refined command logic
     import platform
+    import shutil
+    
+    docker_path = shutil.which('docker')
+    if not docker_path:
+         emit('output', {"term_id": term_id, "data": "Error: Docker executable not found in PATH.\r\n"})
+         return
+
     if platform.system().lower() == 'windows':
         # winpty takes "docker exec -it ..."
-        cmd = ["docker", "exec", "-it", container_id, "/bin/bash"]
+        # Use full path to be safe?
+        cmd = [docker_path, "exec", "-it", container_id, "/bin/bash"]
+        # Convert to string for pywinpty if we want to be safe, but list is usually supported by PtyProcess
+        # Actually, let's try joining it to a string if it's Windows, as explicit command line.
+        # "C:\Program Files\Docker\docker.exe exec -it ..."
+        # We need to quote the path if it has spaces? 
+        # PtyProcess should handle list. Let's trust list first but use full path.
     else:
-        cmd = ["sudo", "docker", "exec", "-it", container_id, "/bin/bash"]
+        cmd = ["sudo", docker_path, "exec", "-it", container_id, "/bin/bash"]
 
     try:
         sess = TerminalManager.create_session(cmd, rows=rows, cols=cols)
@@ -1199,8 +1223,9 @@ def read_and_forward_pty(term_id):
                 # Broadcast to room
                 socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
             elif text is None:
-                 # EOF or error?
-                 pass 
+                 # EOF or error
+                 socketio.emit('output', {"term_id": term_id, "data": "\r\n[Session Closed]\r\n"}, room=term_id, namespace='/terminal')
+                 break
 
             socketio.sleep(0.01) 
     except Exception as e:
