@@ -1238,14 +1238,19 @@ def start_terminal(data):
         emit('output', {"term_id": term_id, "data": ""})
         logger.debug(f"Sent initial empty output to client")
         
-        logger.debug(f"Starting background thread for term_id={term_id}")
+        import sys
+        print(f"[PRINT] About to create thread for {term_id}", flush=True)
         import threading
         reader_thread = threading.Thread(target=read_and_forward_pty, args=(term_id,), daemon=True)
+        print(f"[PRINT] Thread created, about to start", flush=True)
         reader_thread.start()
+        print(f"[PRINT] Thread started", flush=True)
         logger.debug(f"Background thread started")
         
     except Exception as e:
         logger.error(f"Error starting terminal: {e}")
+        import traceback
+        traceback.print_exc()
         emit('output', {"term_id": term_id, "data": f"Error starting terminal: {e}\r\n"})
     finally:
         # Clear the creating flag
@@ -1253,6 +1258,7 @@ def start_terminal(data):
             app.terminal_sessions_creating.discard(term_id)
 
 def read_and_forward_pty(term_id):
+    print(f"[PRINT] read_and_forward_pty ENTERED for {term_id}", flush=True)
     logger.info(f"read_and_forward_pty: starting for term_id={term_id}")
     try:
         loop_count = 0
