@@ -7,9 +7,9 @@ import queue
 import threading
 import logging
 
-# Configure logging
+# Configure logging (set to WARNING to reduce noise)
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format='[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
     datefmt='%H:%M:%S'
 )
