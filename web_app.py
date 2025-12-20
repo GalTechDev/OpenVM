@@ -1106,6 +1106,9 @@ def verify_container_access(username, container_id):
 if not hasattr(app, 'terminal_sessions'):
     app.terminal_sessions = {} 
     
+# Track sessions being created to prevent race conditions
+if not hasattr(app, 'terminal_sessions_creating'):
+    app.terminal_sessions_creating = set()
 
 @socketio.on('connect', namespace='/terminal')
 def connect_terminal():
@@ -1134,12 +1137,21 @@ def start_terminal(data):
 
     # 1. Existing Session Reconnect
     if term_id in app.terminal_sessions:
+        logger.debug(f"Reconnecting to existing session {term_id}")
         join_room(term_id)
         sess = app.terminal_sessions[term_id]
         # Replay history
         for chunk in sess.history:
              emit('output', {"term_id": term_id, "data": chunk}) 
         return
+    
+    # 1b. Check if session is being created (race condition guard)
+    if term_id in app.terminal_sessions_creating:
+        logger.warning(f"Session {term_id} is already being created, ignoring duplicate request")
+        return
+    
+    # Mark as creating
+    app.terminal_sessions_creating.add(term_id)
 
     # 2. New Session
     username = session['username']
@@ -1231,12 +1243,17 @@ def start_terminal(data):
         logger.debug(f"Background task started")
         
         # Force gevent to yield and schedule other greenlets
-        socketio.sleep(0)
+        import gevent
+        gevent.sleep(0)
         logger.debug(f"Yielded to event loop")
         
     except Exception as e:
         logger.error(f"Error starting terminal: {e}")
         emit('output', {"term_id": term_id, "data": f"Error starting terminal: {e}\r\n"})
+    finally:
+        # Clear the creating flag
+        if term_id in app.terminal_sessions_creating:
+            app.terminal_sessions_creating.discard(term_id)
 
 def read_and_forward_pty(term_id):
     logger.info(f"read_and_forward_pty: starting for term_id={term_id}")
