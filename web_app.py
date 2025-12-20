@@ -31,7 +31,8 @@ from terminal_manager import TerminalManager
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key_for_demo' 
-socketio = SocketIO(app, async_mode='gevent')
+# Use threading mode instead of gevent for better Windows compatibility
+socketio = SocketIO(app, async_mode='threading')
 
 DB_PATH = 'data/db.sqlite'
 
@@ -1238,12 +1239,11 @@ def start_terminal(data):
         emit('output', {"term_id": term_id, "data": ""})
         logger.debug(f"Sent initial empty output to client")
         
-        # Use _thread directly to bypass gevent monkey-patching
-        import _thread
-        print(f"[PRINT] About to start thread with _thread for {term_id}", flush=True)
-        _thread.start_new_thread(read_and_forward_pty, (term_id,))
-        print(f"[PRINT] _thread.start_new_thread returned", flush=True)
-        logger.debug(f"Background thread started via _thread")
+        # Use socketio's background task (works with threading mode)
+        print(f"[PRINT] About to start background task for {term_id}", flush=True)
+        socketio.start_background_task(target=read_and_forward_pty, term_id=term_id)
+        print(f"[PRINT] start_background_task returned", flush=True)
+        logger.debug(f"Background task started")
         
     except Exception as e:
         logger.error(f"Error starting terminal: {e}")
@@ -1256,6 +1256,13 @@ def start_terminal(data):
             app.terminal_sessions_creating.discard(term_id)
 
 def read_and_forward_pty(term_id):
+    import os
+    import sys
+    
+    # Write directly to stderr to bypass any buffering
+    os.write(2, f"[STDERR] read_and_forward_pty CALLED with {term_id}\n".encode())
+    sys.stderr.flush()
+    
     print(f"[PRINT] read_and_forward_pty ENTERED for {term_id}", flush=True)
     logger.info(f"read_and_forward_pty: starting for term_id={term_id}")
     try:
@@ -1287,8 +1294,7 @@ def read_and_forward_pty(term_id):
                 socketio.emit('output', {"term_id": term_id, "data": text}, room=term_id, namespace='/terminal')
             # else: empty string, no data yet, continue loop
 
-            import time
-            time.sleep(0.01) 
+            socketio.sleep(0.01) 
     except Exception as e:
         logger.error(f"Terminal Output Error: {e}")
     finally:
