@@ -90,6 +90,26 @@ def list_users():
     for user in users:
         print(f"{user['username']:<20} {user['container_id']:<20}")
 
+def change_password(username, new_password):
+    conn = get_db_connection()
+    c = conn.cursor()
+    try:
+        c.execute('SELECT rowid FROM users WHERE username = ?', (username,))
+        if not c.fetchone():
+            print(f"Error: User '{username}' not found.")
+            return
+
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(new_password.encode('utf-8'), salt)
+        
+        c.execute('UPDATE users SET password_hash = ? WHERE username = ?', (hashed.decode('utf-8'), username))
+        conn.commit()
+        print(f"Password for '{username}' updated successfully.")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        conn.close()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='OpenVM User Manager')
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -104,6 +124,11 @@ if __name__ == '__main__':
     parser_del = subparsers.add_parser('delete_user', help='Delete a user and container')
     parser_del.add_argument('username', help='Username')
 
+    # Change Password
+    parser_passwd = subparsers.add_parser('change_password', help='Change user password')
+    parser_passwd.add_argument('username', help='Username')
+    parser_passwd.add_argument('password', help='New Password')
+
     # List Users
     parser_list = subparsers.add_parser('list_users', help='List all users')
 
@@ -115,3 +140,7 @@ if __name__ == '__main__':
         delete_user(args.username)
     elif args.command == 'list_users':
         list_users()
+    elif args.command == 'change_password':
+        change_password(args.username, args.password)
+
+

@@ -78,12 +78,19 @@ class MySSHServerSession(asyncssh.SSHServerSession):
         if self._chan.get_terminal_type():
             flags = "-it"
         
-        # Check OS for sudo usage
-        import platform
-        if platform.system().lower() == 'windows':
-            docker_cmd = ["docker", "exec", flags, self._container_id, "/bin/bash"]
+        # Check config for sudo usage
+        from docker_utils import get_config
+        config = get_config()
+        
+        docker_cmd = []
+        if not config.get("use_sudo", True):
+             # Windows or Rootless/Rancher
+             docker_cmd = ["docker"]
         else:
-            docker_cmd = ["sudo", "docker", "exec", flags, self._container_id, "/bin/bash"]
+             # Standard Linux Host
+             docker_cmd = ["sudo", "docker"]
+             
+        docker_cmd.extend(["exec", flags, self._container_id, "/bin/bash"])
         
         try:
             self._process = await asyncio.create_subprocess_exec(

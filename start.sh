@@ -1,7 +1,7 @@
 
 #!/bin/bash
 echo "Starting OpenVM Services..."
-echo "This script assumes you have sudo privileges for docker."
+echo "Ensuring OpenVM Services are running..."
 
 # 1. Start SSH Server in background
 echo "Starting SSH Server on port 2222..."

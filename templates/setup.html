@@ -461,6 +461,20 @@
                                 Uses <code>docker</code> without sudo (socket mounted).
                             </div>
                         </div>
+
+                        <div class="mode-card {{ 'selected' if docker_mode == 'rancher' else '' }}"
+                            onclick="selectMode('rancher')">
+                            <input type="radio" name="docker_mode" value="rancher" {{ 'checked' if
+                                docker_mode=='rancher' else '' }}>
+                            <div class="mode-card-header">
+                                <span class="mode-card-icon">🤠</span>
+                                <span class="mode-card-title">Rancher Desktop</span>
+                            </div>
+                            <div class="mode-card-desc">
+                                For Rancher, Podman (rootless), or standard Docker without sudo. <br>
+                                Uses <code>docker</code> directly.
+                            </div>
+                        </div>
                     </div>
 
                     <div class="wizard-footer">

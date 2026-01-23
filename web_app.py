@@ -168,10 +168,18 @@ def setup():
                                    docker_mode=docker_mode)
         
         # Save Docker configuration
-        config = {
-            "docker_mode": docker_mode,
-            "use_sudo": docker_mode == "host"
-        }
+        config = {}
+        
+        if docker_mode == 'rancher':
+            config = {
+                "docker_mode": "host",
+                "use_sudo": False
+            }
+        else:
+            config = {
+                "docker_mode": docker_mode,
+                "use_sudo": docker_mode == "host"
+            }
         save_config(config)
         
         # Create admin user
@@ -219,9 +227,6 @@ def login():
         
         if row['is_blocked']:
              session['is_blocked'] = True
-             # Still allow login to see they are blocked? Or just deny?
-             # User said "cannot start/stop/access", implies they might see dashboard but it's disabled.
-             # We'll store it in session.
         else:
              session['is_blocked'] = False
 
