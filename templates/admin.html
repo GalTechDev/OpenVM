@@ -405,6 +405,53 @@
         </div>
     </div>
 
+    <!-- Manage Attachments Modal -->
+    <div id="attachVolumeModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3><i class="ri-links-line"></i> Manage Volume Attachments</h3>
+                <span class="close-btn"
+                    onclick="document.getElementById('attachVolumeModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="alert warning"
+                    style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 0.75rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 0.9em; display: flex; gap: 0.5rem;">
+                    <i class="ri-alert-line" style="font-size: 1.2em;"></i>
+                    <div>
+                        <strong>Warning:</strong> Modifying attachments will RESTART the affected containers.
+                    </div>
+                </div>
+
+                <form id="attachVolumeForm">
+                    <input type="hidden" id="attachVolumeName">
+                    <div class="form-group">
+                        <label>Volume</label>
+                        <input type="text" id="attachVolumeNameDisplay" disabled style="opacity: 0.7;">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Attached Containers</label>
+                        <div id="containerCheckboxList"
+                            style="max-height: 250px; overflow-y: auto; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.5rem;">
+                            <!-- Populated by JS -->
+                            <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">Loading...</p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="attachMountPath">Mount Path (for new attachments)</label>
+                        <input type="text" id="attachMountPath" placeholder="/mnt/data" value="/mnt/data">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block">Save Changes</button>
+                    <p id="saveStatus"
+                        style="text-align: center; margin-top: 0.5rem; color: var(--text-secondary); display: none;">
+                    </p>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Confirm Modal -->
     <div id="confirmModal" class="modal">
         <div class="modal-content" style="max-width: 400px;">
@@ -533,6 +580,9 @@
                                     <button class="btn-icon info" onclick="openVolumeLimitModal('${v.name}', ${v.size_limit_mb || 0})" title="Set Limit">
                                         <i class="ri-settings-3-line"></i>
                                     </button>
+                                    <button class="btn-icon primary" onclick="openAttachModal('${v.name}', '${v.owner}')" title="Attach to Container">
+                                        <i class="ri-links-line"></i>
+                                    </button>
                                     <button class="btn-icon danger" onclick="deleteVolume('${v.name}')" title="Delete">
                                         <i class="ri-delete-bin-line"></i>
                                     </button>
@@ -550,7 +600,7 @@
             const name = document.getElementById('newVolumeName').value.trim();
 
             if (!name) {
-                alert('Please enter a volume name');
+                showToast('Please enter a volume name', 'warning');
                 return;
             }
 
@@ -562,7 +612,7 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
-                        alert(data.error);
+                        showToast(data.error, 'error');
                     } else {
                         document.getElementById('newVolumeName').value = '';
                         loadVolumes();
@@ -581,7 +631,7 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
-                        alert(data.error);
+                        showToast(data.error, 'error');
                     } else {
                         loadVolumes();
                     }
@@ -612,12 +662,160 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
-                        alert(data.error);
+                        showToast(data.error, 'error');
                     } else {
                         document.getElementById('volumeLimitModal').style.display = 'none';
                         loadVolumes();
                     }
                 });
+        });
+
+        // Manage Attachments Modal Functions
+        let initialAttachedContainers = [];
+
+        function openAttachModal(volumeName, owner) {
+            document.getElementById('attachVolumeName').value = volumeName;
+            document.getElementById('attachVolumeNameDisplay').value = volumeName;
+
+            const listDiv = document.getElementById('containerCheckboxList');
+            listDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 1rem;">Loading...</p>';
+
+            document.getElementById('attachVolumeModal').style.display = 'flex';
+            document.getElementById('saveStatus').style.display = 'none';
+
+            // 1. Fetch current status
+            fetch(`/api/admin/volume/status/${volumeName}`)
+                .then(res => res.json())
+                .then(statusData => {
+                    initialAttachedContainers = statusData.attached_containers || [];
+                    renderContainerCheckboxes(initialAttachedContainers);
+                })
+                .catch(err => {
+                    listDiv.innerHTML = `<p style="color: var(--danger);">Error loading status: ${err}</p>`;
+                });
+        }
+
+        function renderContainerCheckboxes(attachedIds) {
+            const listDiv = document.getElementById('containerCheckboxList');
+            listDiv.innerHTML = '';
+
+            if (allUsers.length === 0) {
+                listDiv.innerHTML = '<p>No users found.</p>';
+                return;
+            }
+
+            allUsers.forEach(user => {
+                if (user.containers && user.containers.length > 0) {
+                    // Header
+                    const header = document.createElement('div');
+                    header.style.padding = '0.5rem';
+                    header.style.background = 'rgba(255,255,255,0.05)';
+                    header.style.fontWeight = 'bold';
+                    header.style.fontSize = '0.9em';
+                    header.innerText = user.username.toUpperCase();
+                    listDiv.appendChild(header);
+
+                    user.containers.forEach(c => {
+                        const row = document.createElement('div');
+                        row.style.padding = '0.5rem';
+                        row.style.borderBottom = '1px solid var(--border)';
+                        row.style.display = 'flex';
+                        row.style.alignItems = 'center';
+                        row.style.gap = '0.75rem';
+
+                        const isChecked = attachedIds.includes(c.id);
+
+                        row.innerHTML = `
+                            <input type="checkbox" name="container_target" value="${c.id}" id="cb_${c.id}" ${isChecked ? 'checked' : ''} style="width: auto;">
+                            <label for="cb_${c.id}" style="margin: 0; cursor: pointer; flex: 1;">
+                                <div>${c.name}</div>
+                                <div style="font-size: 0.8em; color: var(--text-secondary); font-family: monospace;">${c.id.substring(0, 12)}</div>
+                            </label>
+                            ${isChecked ? '<span class="badge" style="background: var(--success); font-size: 0.7em; padding: 2px 6px; border-radius: 4px;">Attached</span>' : ''}
+                        `;
+                        listDiv.appendChild(row);
+                    });
+                }
+            });
+        }
+
+        document.getElementById('attachVolumeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const volumeName = document.getElementById('attachVolumeName').value;
+            const mountPath = document.getElementById('attachMountPath').value;
+
+            // Get selected IDs
+            const checkboxes = document.querySelectorAll('input[name="container_target"]:checked');
+            const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+
+            // Calculate Diff
+            const toAttach = selectedIds.filter(id => !initialAttachedContainers.includes(id));
+            const toDetach = initialAttachedContainers.filter(id => !selectedIds.includes(id));
+
+            if (toAttach.length === 0 && toDetach.length === 0) {
+                showToast("No changes made.", 'info');
+                return;
+            }
+
+            if (!await showConfirm("Update Attachments", `This will restart ${toAttach.length + toDetach.length} containers. Continue?`)) return;
+
+            const statusP = document.getElementById('saveStatus');
+            statusP.style.display = 'block';
+            statusP.innerText = "Processing...";
+
+            let successCount = 0;
+            let errors = [];
+
+            // Process Detachments
+            for (const cid of toDetach) {
+                try {
+                    statusP.innerText = `Detaching from ${cid.substring(0, 8)}...`;
+                    const res = await fetch('/api/admin/volume/detach', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ container_id: cid, volume_name: volumeName })
+                    });
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+                    successCount++;
+                } catch (err) {
+                    errors.push(`Detach ${cid.substring(0, 8)}: ${err.message}`);
+                }
+            }
+
+            // Process Attachments
+            for (const cid of toAttach) {
+                try {
+                    statusP.innerText = `Attaching to ${cid.substring(0, 8)}...`;
+                    const res = await fetch('/api/admin/volume/attach', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            container_id: cid,
+                            volume_name: volumeName,
+                            mount_path: mountPath
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+                    successCount++;
+                } catch (err) {
+                    errors.push(`Attach ${cid.substring(0, 8)}: ${err.message}`);
+                }
+            }
+
+            statusP.style.display = 'none';
+
+            if (errors.length > 0) {
+                showToast(`Completed with warnings. Success: ${successCount}, Failed: ${errors.length}`, 'warning');
+                console.error(errors);
+            } else {
+                showToast("All changes saved successfully!", 'success');
+                document.getElementById('attachVolumeModal').style.display = 'none';
+            }
+
+            loadUsers(); // Refresh
         });
 
         // Container Limits Modal Functions
@@ -629,7 +827,7 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
-                        alert(data.error);
+                        showToast(data.error, 'error');
                         return;
                     }
 
@@ -662,7 +860,7 @@
                 .then(res => res.json())
                 .then(result => {
                     if (result.error) {
-                        alert(result.error);
+                        showToast(result.error, 'error');
                     } else {
                         document.getElementById('limitsModal').style.display = 'none';
                         loadUsers();
@@ -803,9 +1001,9 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else {
-                        alert('Ownership transferred');
+                        showToast('Ownership transferred', 'success');
                         document.getElementById('reassignModal').style.display = 'none';
                         loadUsers();
                     }
@@ -823,7 +1021,7 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else loadUsers();
                 });
         }
@@ -868,7 +1066,7 @@
                     submitBtn.innerText = originalText;
                     submitBtn.disabled = false;
 
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else {
                         document.getElementById('createContainerModal').style.display = 'none';
                         e.target.reset();
@@ -888,7 +1086,7 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else {
                         loadUsers();
                         loadSystemStats();
@@ -929,7 +1127,7 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else {
                         document.getElementById('editUserModal').style.display = 'none';
                         loadUsers();
@@ -950,7 +1148,7 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else {
                         document.getElementById('createUserForm').reset();
                         closeModal();
@@ -968,7 +1166,7 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else loadUsers();
                 });
         }
@@ -1292,6 +1490,9 @@
             color: var(--accent);
         }
     </style>
+    <div id="toast-container"></div>
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 
 </html>

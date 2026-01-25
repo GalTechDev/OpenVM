@@ -153,7 +153,7 @@ function createFolder() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ container_id: containerId, path: path })
     }).then(res => res.json()).then(data => {
-        if (data.error) alert(data.error);
+        if (data.error) showToast(data.error, 'error');
         else {
             closeFileModal('newFolderModal');
             document.getElementById('newFolderName').value = '';
@@ -179,7 +179,7 @@ function submitRename() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ container_id: containerId, old_path: oldPath, new_path: newPath })
     }).then(res => res.json()).then(data => {
-        if (data.error) alert(data.error);
+        if (data.error) showToast(data.error, 'error');
         else {
             closeFileModal('renameModal');
             loadFiles(currentPath);
@@ -198,7 +198,7 @@ async function deleteFile(filename) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ container_id: containerId, path: path })
     }).then(res => res.json()).then(data => {
-        if (data.error) alert(data.error);
+        if (data.error) showToast(data.error, 'error');
         else {
             loadFiles(currentPath);
         }
@@ -229,14 +229,14 @@ function uploadFile() {
             fileInput.value = '';
 
             if (data.error) {
-                alert(data.error);
+                showToast(data.error, 'error');
             } else {
                 loadFiles(currentPath);
             }
         })
         .catch(err => {
             console.error(err);
-            alert("Upload failed");
+            showToast("Upload failed", 'error');
         });
 }
 

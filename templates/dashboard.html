@@ -376,14 +376,17 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.error) alert(data.error);
+                    if (data.error) showToast(data.error, 'error');
                     else {
-                        alert("Container updated successfully.");
+                        showToast("Container updated successfully.", 'success');
                         location.reload();
                     }
                 });
         }
     </script>
+    <div id="toast-container"></div>
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 
 </html>

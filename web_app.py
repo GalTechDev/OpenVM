@@ -7,6 +7,8 @@ import bcrypt
 import struct
 import psutil
 import logging
+import subprocess
+import io
 
 # Configure logging (set to WARNING to reduce noise)
 logging.basicConfig(
@@ -788,6 +790,102 @@ def set_volume_limit():
         conn.commit()
         conn.close()
         return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/volume/attach', methods=['POST'])
+def attach_volume_api():
+    if not session.get('is_admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    data = request.json
+    container_id = data.get('container_id')
+    volume_name = data.get('volume_name')
+    mount_path = data.get('mount_path', '/mnt/data')
+    
+    if not container_id or not volume_name:
+        return jsonify({"error": "Missing container_id or volume_name"}), 400
+        
+    # Verify both belong to compatible owners? 
+    # Admin can do anything, so we skip strict ownership check for now, 
+    # but theoretically we should check if they match.
+    
+    try:
+        new_id = DockerHelper.attach_volume(container_id, volume_name, mount_path)
+        
+        # Update Database ID
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('UPDATE containers SET container_docker_id = ? WHERE container_docker_id = ?', 
+                  (new_id, container_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "new_id": new_id})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/volume/detach', methods=['POST'])
+def detach_volume_api():
+    if not session.get('is_admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    data = request.json
+    container_id = data.get('container_id')
+    volume_name = data.get('volume_name')
+    
+    if not container_id or not volume_name:
+        return jsonify({"error": "Missing container_id or volume_name"}), 400
+        
+    try:
+        new_id = DockerHelper.detach_volume(container_id, volume_name)
+        
+        # Update Database ID
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('UPDATE containers SET container_docker_id = ? WHERE container_docker_id = ?', 
+                  (new_id, container_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "new_id": new_id})
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/volume/status/<volume_name>', methods=['GET'])
+def get_volume_status(volume_name):
+    if not session.get('is_admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        # We need to find which containers have this volume mounted.
+        # This requires inspecting ALL containers? Or can we query docker?
+        # Inspecting all running containers is safest.
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT container_docker_id FROM containers')
+        containers = [row[0] for row in c.fetchall()]
+        conn.close()
+        
+        attached_containers = []
+        
+        for cid in containers:
+            try:
+                info = DockerHelper.inspect(cid)
+                if info and info.get('Mounts'):
+                    for mount in info['Mounts']:
+                        src = mount.get('Name') or mount.get('Source')
+                        if src == volume_name:
+                            attached_containers.append(cid)
+                            break
+            except:
+                continue
+                
+        return jsonify({"volume": volume_name, "attached_containers": attached_containers})
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

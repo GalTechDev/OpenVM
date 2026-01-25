@@ -247,14 +247,13 @@ async function controlContainer(action) {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
-            } else {
-                // Update status badge
-                const badge = document.getElementById('status-badge');
-                if (badge) {
-                    badge.className = `status-badge ${data.new_status}`;
-                    badge.innerHTML = `<span class="dot"></span> ${data.new_status}`;
-                }
+                showToast('Error: ' + data.error, 'error');
+                return;
+            }    // Update status badge
+            const badge = document.getElementById('status-badge');
+            if (badge) {
+                badge.className = `status-badge ${data.new_status}`;
+                badge.innerHTML = `<span class="dot"></span> ${data.new_status}`;
             }
         })
         .catch(error => console.error('Error:', error));

@@ -1,8 +1,7 @@
 # Web Framework
 flask
 flask-socketio
-gevent
-gevent-websocket
+
 
 # Authentication
 bcrypt
@@ -15,3 +14,5 @@ psutil
 
 # Windows Terminal Support
 pywinpty; sys_platform == 'win32'
+
+PyYAML

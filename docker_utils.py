@@ -32,17 +32,18 @@ def save_config(config):
 
 class DockerHelper:
     @staticmethod
-    def run_command(cmd_list):
+    def get_docker_base_cmd():
+        """Helper to get the base docker command list based on config."""
         config = get_config()
-        
-        # Build command based on mode
         # On Windows, never use sudo.
         if IS_WINDOWS or config.get("docker_mode") == "container" or not config.get("use_sudo", True):
-            # Container mode or Windows - no sudo needed
-            full_cmd = ["docker"] + cmd_list
+            return ["docker"]
         else:
-            # Host mode on Linux - use sudo
-            full_cmd = ["sudo", "docker"] + cmd_list
+            return ["sudo", "docker"]
+
+    @staticmethod
+    def run_command(cmd_list):
+        full_cmd = DockerHelper.get_docker_base_cmd() + cmd_list
         
         try:
             result = subprocess.run(
@@ -87,7 +88,8 @@ class DockerHelper:
             if IS_WINDOWS:
                 check = subprocess.run(["docker", "network", "inspect", network_name], capture_output=True)
             else:
-                check = subprocess.run(["sudo", "docker", "network", "inspect", network_name], capture_output=True)
+                base = DockerHelper.get_docker_base_cmd()
+                check = subprocess.run(base + ["network", "inspect", network_name], capture_output=True)
                 
             if check.returncode != 0:
                 DockerHelper.run_command(["network", "create", network_name])
@@ -296,7 +298,7 @@ class DockerHelper:
         if IS_WINDOWS:
             cmd = ["docker", "exec", container_id, "cat", file_path]
         else:
-            cmd = ["sudo", "docker", "exec", container_id, "cat", file_path]
+            cmd = DockerHelper.get_docker_base_cmd() + ["exec", container_id, "cat", file_path]
         result = subprocess.run(cmd, capture_output=True, check=True)
         return result.stdout
 
@@ -322,7 +324,7 @@ class DockerHelper:
         if IS_WINDOWS:
             return ["docker", "cp", f"{container_id}:{path}", "-"]
         else:
-            return ["sudo", "docker", "cp", f"{container_id}:{path}", "-"]
+            return DockerHelper.get_docker_base_cmd() + ["cp", f"{container_id}:{path}", "-"]
 
     # Volume Management
     @staticmethod
@@ -398,3 +400,193 @@ class DockerHelper:
             v['size_mb'] = round(DockerHelper.get_volume_size(v['name']), 2)
         return volumes
 
+
+    @staticmethod
+    def attach_volume(container_id, volume_name, mount_path):
+        """
+        Recreates a container with a new volume attached.
+        Returns the new container ID.
+        """
+        # 1. Inspect existing container
+        info = DockerHelper.inspect(container_id)
+        if not info:
+            raise Exception("Container not found")
+            
+        # 2. Extract configuration
+        # Name: /openvm_client_{suffix}
+        name = info['Name']
+        if name.startswith('/'): name = name[1:]
+        
+        if not name.startswith('openvm_client_'):
+             raise Exception("Invalid container naming, cannot recreate safely")
+             
+        username_suffix = name.replace('openvm_client_', '')
+        
+        # Config
+        config = info['Config']
+        host_config = info['HostConfig']
+        network_settings = info['NetworkSettings']
+        
+        image = config['Image']
+        env = config.get('Env', [])
+        cmd = config.get('Cmd', [])
+        
+        # Ports
+        # PortBindings: {'80/tcp': [{'HostIp': '', 'HostPort': '8080'}]}
+        ports = []
+        if host_config.get('PortBindings'):
+            for container_port, host_bindings in host_config['PortBindings'].items():
+                c_port = container_port.split('/')[0] # '80'
+                if host_bindings:
+                    for bind in host_bindings:
+                        h_port = bind.get('HostPort')
+                        if h_port:
+                            ports.append(f"{h_port}:{c_port}")
+                    
+        # Network
+        networks = network_settings.get('Networks', {})
+        network_name = list(networks.keys())[0] if networks else None
+        
+        # Existing Mounts (Volumes/Binds)
+        # We need to preserve them.
+        # "Mounts": [{"Type": "volume", "Name": "...", "Destination": "..."}]
+        volumes_args = []
+        if info.get('Mounts'):
+            for mount in info['Mounts']:
+                 # We only care about user defined volumes or binds?
+                 # Docker inspect Mounts includes everything.
+                 # Let's reconstruct -v flags.
+                 src = mount.get('Name') or mount.get('Source')
+                 dst = mount['Destination']
+                 volumes_args.append(f"{src}:{dst}")
+        
+        # Add NEW volume
+        new_vol_arg = f"{volume_name}:{mount_path}"
+        if new_vol_arg not in volumes_args:
+            volumes_args.append(new_vol_arg)
+            
+        # 3. Recreate
+        # We assume create_container logic is too high level (it defaults image/cmd).
+        # So we build the command manually here to match `docker run`.
+        
+        # Cleanup old
+        DockerHelper.remove_container(container_id)
+        
+        # Build Run Command
+        
+        # Check config for sudo/host mode
+        from docker_utils import get_config, IS_WINDOWS
+        
+        docker_cmd = DockerHelper.get_docker_base_cmd()
+            
+        run_cmd = docker_cmd + [
+            "run", "-d",
+            "--name", name,
+            "--hostname", config.get('Hostname', username_suffix)
+        ]
+        
+        if network_name:
+            run_cmd.extend(["--network", network_name])
+            
+        for p in ports:
+            run_cmd.extend(["-p", p])
+            
+        for e in env:
+            run_cmd.extend(["-e", e])
+            
+        for v in volumes_args:
+            run_cmd.extend(["-v", v])
+            
+        run_cmd.append(image)
+        
+        # Append Command if it exists and isn't null
+        if cmd:
+            run_cmd.extend(cmd)
+            
+        try:
+            result = subprocess.run(
+                run_cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Docker command failed: {e.stderr}")
+
+    @staticmethod
+    def detach_volume(container_id, volume_name):
+        """
+        Recreates a container with the specified volume REMOVED.
+        Returns the new container ID.
+        """
+        # 1. Inspect
+        info = DockerHelper.inspect(container_id)
+        if not info: raise Exception("Container not found")
+
+        # 2. Extract configuration
+        name = info['Name']
+        if name.startswith('/'): name = name[1:]
+        if not name.startswith('openvm_client_'): raise Exception("Invalid container naming")
+        username_suffix = name.replace('openvm_client_', '')
+
+        config = info['Config']
+        host_config = info['HostConfig']
+        network_settings = info['NetworkSettings']
+
+        image = config['Image']
+        env = config.get('Env', [])
+        cmd = config.get('Cmd', [])
+
+        # Ports
+        ports = []
+        if host_config.get('PortBindings'):
+             for c_port, bindings in host_config['PortBindings'].items():
+                 c_port = c_port.split('/')[0]
+                 if bindings:
+                     for b in bindings:
+                         if 'HostPort' in b: ports.append(f"{b['HostPort']}:{c_port}")
+
+        # Networks
+        networks = network_settings.get('Networks', {})
+        network_name = list(networks.keys())[0] if networks else None
+
+        # Mounts - Filter out
+        volumes_args = []
+        if info.get('Mounts'):
+            for mount in info['Mounts']:
+                 src = mount.get('Name') or mount.get('Source')
+                 dst = mount['Destination']
+                 
+                 # Check strict equality on name or source
+                 if src == volume_name:
+                     continue
+                 
+                 volumes_args.append(f"{src}:{dst}")
+
+        # 3. Recreate
+        DockerHelper.remove_container(container_id)
+
+        from docker_utils import get_config, IS_WINDOWS
+        # Use common helper for base command
+        docker_cmd = DockerHelper.get_docker_base_cmd()
+        
+        run_cmd = docker_cmd + [
+            "run", "-d",
+            "--name", name,
+            "--hostname", config.get('Hostname', username_suffix)
+        ]
+
+        if network_name: run_cmd.extend(["--network", network_name])
+        for p in ports: run_cmd.extend(["-p", p])
+        for e in env: run_cmd.extend(["-e", e])
+        for v in volumes_args: run_cmd.extend(["-v", v])
+        
+        run_cmd.append(image)
+        if cmd: run_cmd.extend(cmd)
+
+        try:
+            result = subprocess.run(run_cmd, capture_output=True, text=True, check=True)
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Docker command failed: {e.stderr}")

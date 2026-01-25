@@ -40,6 +40,14 @@ def add_user(username, password, is_admin=False):
         admin_val = 1 if is_admin else 0
         c.execute('INSERT INTO users (username, password_hash, container_id, is_admin) VALUES (?, ?, ?, ?)',
                   (username, hashed.decode('utf-8'), container_id[:12], admin_val))
+        
+        # Get the new user ID
+        user_id = c.lastrowid
+        
+        # Insert into containers table so it appears in the UI
+        c.execute('INSERT INTO containers (user_id, container_docker_id, name) VALUES (?, ?, ?)',
+                  (user_id, container_id, username))  # Use username as default container name
+
         conn.commit()
         print(f"User '{username}' added successfully (Admin: {is_admin}).")
 
@@ -53,13 +61,14 @@ def delete_user(username):
     c = conn.cursor()
 
     try:
-        c.execute('SELECT container_id FROM users WHERE username = ?', (username,))
+        c.execute('SELECT rowid, container_id FROM users WHERE username = ?', (username,))
         result = c.fetchone()
         if not result:
             print(f"Error: User '{username}' not found.")
             return
 
         container_id = result['container_id']
+        user_id = result['rowid']
 
         # Remove container
         try:
@@ -69,6 +78,7 @@ def delete_user(username):
             print(f"Error removing container: {e}")
 
         # Remove from DB
+        c.execute('DELETE FROM containers WHERE user_id = ?', (user_id,))
         c.execute('DELETE FROM users WHERE username = ?', (username,))
         conn.commit()
         print(f"User '{username}' deleted.")
