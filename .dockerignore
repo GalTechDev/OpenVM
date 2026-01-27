@@ -31,3 +31,13 @@ data/
 # Test files
 test/
 tests/
+check_users.py
+run_verification.sh
+
+# Helper scripts
+start.sh
+start.bat
+
+# Keys (should be generated at runtime)
+ssh_host_key
+ssh_host_key.pub

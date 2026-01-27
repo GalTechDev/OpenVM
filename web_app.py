@@ -32,7 +32,8 @@ from docker_utils import DockerHelper
 from terminal_manager import TerminalManager
 
 app = Flask(__name__)
-app.secret_key = 'super_secret_key_for_demo' 
+# Use environment variable for secret key in production
+app.secret_key = os.environ.get('SECRET_KEY', 'super_secret_key_for_demo_dev_only')
 # Use threading mode instead of gevent for better Windows compatibility
 socketio = SocketIO(app, async_mode='threading')
 
@@ -81,6 +82,16 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             volume_name TEXT UNIQUE NOT NULL,
             size_limit_mb INTEGER DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Create scripts table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS scripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            content TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -328,51 +339,121 @@ def list_users():
 def create_container_api():
     if not session.get('is_admin'):
         return jsonify({"error": "Unauthorized"}), 403
-    
+        
     data = request.json
     username = data.get('username')
+    display_name = data.get('name')
+    ports = data.get('ports', '')
+    yaml_config = data.get('yaml_config', '')
+    scripts = data.get('scripts', []) # List of IDs
     
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('SELECT rowid as id FROM users WHERE username = ?', (username,))
     row = c.fetchone()
+    conn.close()
     
     if not row:
-        conn.close()
         return jsonify({"error": "User not found"}), 404
         
     user_id = row['id']
-    ports = data.get('ports', '') # "80:80,8080:8080"
-    yaml_config = data.get('yaml_config', '')
+    
+    import uuid
+    task_id = str(uuid.uuid4())
+    
+    # Start background task
+    socketio.start_background_task(
+        target=background_create_container,
+        task_id=task_id,
+        app=app, 
+        username=username,
+        name=display_name,
+        ports=ports,
+        yaml_config=yaml_config,
+        scripts=scripts,
+        user_id=user_id
+    )
+    
+    return jsonify({"status": "started", "task_id": task_id})
+
+# Script Management API
+@app.route('/api/admin/scripts', methods=['GET'])
+def list_scripts():
+    if not session.get('is_admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('SELECT id, name, content, created_at FROM scripts ORDER BY created_at DESC')
+    scripts = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return jsonify({"scripts": scripts})
+
+@app.route('/api/admin/scripts/create', methods=['POST'])
+def create_script():
+    if not session.get('is_admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    data = request.json
+    name = data.get('name')
+    content = data.get('content')
+    
+    if not name or not content:
+        return jsonify({"error": "Name and content required"}), 400
     
     try:
-        # Network per user
-        network_name = f"openvm_net_{username}"
-        DockerHelper.create_network(network_name)
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('INSERT INTO scripts (name, content) VALUES (?, ?)', (name, content))
+        conn.commit()
+        new_id = c.lastrowid
+        conn.close()
+        return jsonify({"status": "success", "id": new_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        # Create container 
-        import uuid
-        unique_suffix = str(uuid.uuid4())[:8]
-        # This string passed to DockerHelper becomes part of openvm_client_{suffix}
-        # and hostname. safely unique.
-        docker_ref = f"{username}-{unique_suffix}"
-        
-        # Display name check
-        display_name = data.get('name') or docker_ref
-        
-        container_id = DockerHelper.create_container(docker_ref, ports=ports, network=network_name, yaml_config=yaml_config)
-        
-        # We should store ports in DB if we want to show them later. 
-        # For now, we rely on Docker inspect for viewing.
-        
-        c.execute('INSERT INTO containers (user_id, container_docker_id, name) VALUES (?, ?, ?)',
-                  (user_id, container_id, display_name))
+@app.route('/api/admin/scripts/update', methods=['POST'])
+def update_script():
+    if not session.get('is_admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    data = request.json
+    script_id = data.get('id')
+    name = data.get('name')
+    content = data.get('content')
+    
+    if not script_id or not name or not content:
+        return jsonify({"error": "Missing fields"}), 400
+    
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('UPDATE scripts SET name = ?, content = ? WHERE id = ?', (name, content, script_id))
         conn.commit()
         conn.close()
-        
-        return jsonify({"status": "created", "container_id": container_id})
+        return jsonify({"status": "success"})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/scripts/delete', methods=['POST'])
+def delete_script():
+    if not session.get('is_admin'):
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    data = request.json
+    script_id = data.get('id')
+    
+    if not script_id:
+        return jsonify({"error": "Missing ID"}), 400
+    
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('DELETE FROM scripts WHERE id = ?', (script_id,))
+        conn.commit()
         conn.close()
+        return jsonify({"status": "success"})
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/container/update_ports', methods=['POST'])
@@ -422,6 +503,70 @@ def update_ports():
         return jsonify({"status": "updated", "new_id": new_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@socketio.on('join_creation_room', namespace='/creation')
+def join_creation_room(data):
+    task_id = data.get('task_id')
+    if task_id:
+        join_room(task_id)
+        emit('creation_log', {'msg': f"Joined creation task {task_id}"}, room=task_id)
+
+def background_create_container(task_id, app, username, name, ports, yaml_config, scripts, user_id):
+    """
+    Background task to create a container and execute scripts, emitting logs via Socket.IO.
+    """
+    with app.app_context():
+        def log(msg):
+            socketio.emit('creation_log', {'msg': msg}, room=task_id, namespace='/creation')
+        
+        try:
+            log(f"Starting creation for user {username}...")
+            
+            # 1. Create Container
+            container_id = DockerHelper.create_container(username, ports, yaml_config=yaml_config, logger=log)
+            
+            # 2. Update DB
+            conn = get_db_connection()
+            c = conn.cursor()
+            
+            # Update user's container_id (legacy logic support)
+            c.execute('UPDATE users SET container_id = ? WHERE rowid = ?', (container_id[:12], user_id))
+            
+            # Insert into containers table
+            c.execute('INSERT INTO containers (user_id, container_docker_id, name, status) VALUES (?, ?, ?, ?)',
+                      (user_id, container_id, name, "running"))
+            
+            conn.commit()
+            conn.close()
+            
+            log(f"Container registered in database.")
+            
+            # 3. Execute Scripts
+            if scripts:
+                log(f"Found {len(scripts)} scripts to execute.")
+                
+                # Fetch script contents
+                conn = get_db_connection()
+                c = conn.cursor()
+                # scripts is list of IDs
+                placeholders = ','.join('?' for _ in scripts)
+                c.execute(f'SELECT name, content FROM scripts WHERE id IN ({placeholders})', scripts)
+                script_rows = c.fetchall()
+                conn.close()
+                
+                scripts_data = [{'name': r['name'], 'content': r['content']} for r in script_rows]
+                
+                DockerHelper.execute_scripts(container_id, scripts_data, logger=log)
+            
+            log("Creation Process Completed Successfully!")
+            socketio.emit('creation_complete', {}, room=task_id, namespace='/creation')
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            log(f"Error: {str(e)}")
+            socketio.emit('creation_failed', {'error': str(e)}, room=task_id, namespace='/creation')
+
 
 @app.route('/api/admin/create_user', methods=['POST'])
 def create_user():
@@ -1104,10 +1249,34 @@ def dashboard():
     # Handle single container view compatibility or list view
     # If ?target=... is present, use that, else default to first
     target_container_id = request.args.get('target', None)
+    admin_target_id = request.args.get('admin_target', None)
     
-    # Verification: Does target belong to user?
     current_container = None
-    if target_container_id:
+    
+    # Admin Target Override
+    if is_admin and admin_target_id:
+        # Fetch any container by ID
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT container_docker_id, name FROM containers WHERE container_docker_id = ?', (admin_target_id,))
+        row = c.fetchone()
+        conn.close()
+        
+        if row:
+            cid = row['container_docker_id']
+            try:
+                status = DockerHelper.get_status(cid)
+            except:
+                status = "error"
+            
+            current_container = {
+                "id": cid,
+                "name": row['name'],
+                "status": status
+            }
+    
+    # User Target Verification (only if no admin override or override failed)
+    if not current_container and target_container_id:
         for cont in containers:
             if cont['id'] == target_container_id: # Use 'id' alias
                 current_container = cont
@@ -1436,4 +1605,4 @@ def on_terminal_resize(data):
             pass
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

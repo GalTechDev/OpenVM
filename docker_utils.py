@@ -97,13 +97,23 @@ class DockerHelper:
             pass
 
     @staticmethod
-    def create_container(username, ports=None, network=None, yaml_config=None):
+    def create_container(username, ports=None, network=None, yaml_config=None, logger=None):
+        """
+        Create a container for the user.
+        ports: string like "8080:80,3000:3000"
+        logger: function(msg) -> void
+        """
+        def log(msg):
+            if logger: logger(msg)
+            print(msg) # Always print to console
+
         # docker run -d --name openvm_client_<user> -h <user> ubuntu:latest tail -f /dev/null
         # username here is actually the "suffix" or "ref" passed from web_app
         container_name = f"openvm_client_{username}"
         
         # Check if exists
         try:
+            log(f"Removing existing container {container_name} if present...")
             DockerHelper.run_command(["rm", "-f", container_name])
         except:
             pass
@@ -116,6 +126,7 @@ class DockerHelper:
         
         if yaml_config:
             try:
+                log("Parsing YAML configuration...")
                 import yaml
                 config = yaml.safe_load(yaml_config)
                 if config:
@@ -132,7 +143,14 @@ class DockerHelper:
                         elif isinstance(cmd_val, list):
                             command = cmd_val
             except Exception as e:
-                print(f"YAML parse error: {e}")
+                log(f"YAML parse error: {e}")
+
+        # Ensure image is present
+        log(f"Pulling image {image}...")
+        try:
+             DockerHelper.run_command(["pull", image])
+        except Exception as e:
+             log(f"Error pulling image (will try to run anyway): {e}")
 
         cmd = [
             "run", "-d",
@@ -164,7 +182,10 @@ class DockerHelper:
         cmd.append(image)
         cmd.extend(command)
         
+        log(f"Creating container {container_name}...")
         output = DockerHelper.run_command(cmd)
+        log(f"Container created: {output[:12]}")
+        
         return output.strip() # Returns long ID
 
     @staticmethod
@@ -590,3 +611,73 @@ class DockerHelper:
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
             raise Exception(f"Docker command failed: {e.stderr}")
+
+    @staticmethod
+    def execute_scripts(container_id, scripts, logger=None):
+        """
+        Execute a list of scripts in the container.
+        scripts: list of dicts {'name': str, 'content': str}
+        """
+        def log(msg):
+            if logger: logger(msg)
+            print(msg) 
+
+        import time
+        
+        # Wait for container to be running
+        log("Waiting for container startup...")
+        max_retries = 30
+        for _ in range(max_retries):
+            if DockerHelper.is_running(container_id):
+                break
+            time.sleep(1)
+            
+        if not DockerHelper.is_running(container_id):
+            log(f"Container {container_id} failed to start, skipping scripts")
+            return
+
+        for script in scripts:
+            name = script['name']
+            content = script['content']
+            safe_name = "".join(x for x in name if x.isalnum() or x in "._-")
+            if not safe_name: safe_name = "script"
+            
+            log(f"Preparing script: {name}")
+            
+            # 1. Write to local temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+                content = content.replace('\r\n', '\n')
+                f.write(content)
+                temp_path = f.name
+                
+            try:
+                # 2. Copy to container
+                dest_path = f"/tmp/{safe_name}"
+                DockerHelper.put_file(container_id, temp_path, dest_path)
+                
+                # 3. Make executable
+                DockerHelper.run_command(["exec", container_id, "chmod", "+x", dest_path])
+                
+                # Execute
+                log(f"Executing {name}...")
+                
+                res = subprocess.run(
+                    DockerHelper.get_docker_base_cmd() + ["exec", container_id, dest_path],
+                    capture_output=True, text=True
+                )
+                
+                if res.returncode != 0:
+                    log(f"Script {name} failed:\n{res.stderr}")
+                else:
+                    output = res.stdout.strip()
+                    if output:
+                        log(f"[{name}] Output:\n{output}")
+                    else:
+                        log(f"[{name}] Completed (no output)")
+                    
+            except Exception as e:
+                log(f"Error running script {name}: {e}")
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)

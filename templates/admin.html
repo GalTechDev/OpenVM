@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 
 <body>
@@ -68,6 +69,8 @@
                     Containers</button>
                 <button class="tab-btn" onclick="switchTab('volumes')"><i class="ri-hard-drive-2-line"></i>
                     Volumes</button>
+                <button class="tab-btn" onclick="switchTab('scripts')"><i class="ri-file-code-line"></i>
+                    Scripts</button>
             </div>
 
             <div class="content-grid">
@@ -196,8 +199,52 @@
                     </div>
                 </div>
 
+                <!-- SCRIPTS TAB -->
+                <div id="tab-scripts" class="tab-content" style="display: none;">
+                    <div style="margin-bottom: 1rem; display: flex; justify-content: flex-end;">
+                        <button class="btn btn-primary" onclick="openScriptModal()">
+                            <i class="ri-add-line"></i> Create Script
+                        </button>
+                    </div>
+                    <div class="card">
+                        <h3><i class="ri-file-code-line"></i> Automation Scripts</h3>
+                        <div id="scriptList" style="margin-top: 1rem;">
+                            <p style="color: var(--text-secondary);">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </main>
+    </div>
+
+    <!-- Creation Log Modal -->
+    <div id="creationLogModal" class="modal" style="z-index: 2000;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3><i class="ri-terminal-box-line"></i> Creating Container...</h3>
+                <!-- Close button disabled initially -->
+                <button class="btn btn-sm btn-outline" id="closeCreationLogBtn" onclick="closeCreationLogModal()"
+                    disabled>Close</button>
+            </div>
+            <div class="modal-body">
+                <div id="creationLogOutput" style="
+                    background: #1e1e1e; 
+                    color: #d4d4d4; 
+                    font-family: monospace; 
+                    padding: 1rem; 
+                    border-radius: 0.5rem; 
+                    height: 300px; 
+                    overflow-y: auto; 
+                    white-space: pre-wrap;
+                    font-size: 0.9em;
+                    border: 1px solid #333;
+                "></div>
+                <div id="creationProgress" style="margin-top: 1rem; text-align: center; color: var(--accent);">
+                    <i class="ri-loader-4-line ri-spin"></i> Processing...
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- MODALS -->
@@ -292,6 +339,17 @@
                             style="width: 100%; font-family: monospace; font-size: 0.85rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; color: var(--text-primary); resize: vertical;"></textarea>
                         <small style="color: var(--text-secondary);">Supports: image, environment, volumes,
                             command</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Execute Scripts</label>
+                        <div id="containerScriptsList"
+                            style="max-height: 150px; overflow-y: auto; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.5rem;">
+                            <!-- Populated by JS -->
+                            <p style="color: var(--text-secondary); padding: 0.5rem;">No scripts available.</p>
+                        </div>
+                        <small style="color: var(--text-secondary);">Selected scripts will run after container
+                            starts.</small>
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-block">Create Container</button>
@@ -452,6 +510,33 @@
         </div>
     </div>
 
+    <!-- Script Modal -->
+    <div id="scriptModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3 id="scriptModalTitle">Create Script</h3>
+                <span class="close-btn"
+                    onclick="document.getElementById('scriptModal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="scriptForm">
+                    <input type="hidden" id="scriptId">
+                    <div class="form-group">
+                        <label for="scriptName">Script Name</label>
+                        <input type="text" id="scriptName" placeholder="e.g. Install Node.js" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="scriptContent">Content (Shell Script)</label>
+                        <textarea id="scriptContent" rows="15" placeholder="#!/bin/bash&#10;echo 'Hello World'"
+                            style="width: 100%; font-family: monospace; font-size: 0.9rem; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; color: var(--text-primary); resize: vertical; white-space: pre;"
+                            required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Script</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Confirm Modal -->
     <div id="confirmModal" class="modal">
         <div class="modal-content" style="max-width: 400px;">
@@ -466,6 +551,8 @@
                     <button id="confirmBtn" class="btn btn-primary btn-block"
                         style="margin-top: 0; background: #ef4444; border-color: #ef4444;">Confirm</button>
                 </div>
+
+
             </div>
         </div>
     </div>
@@ -529,7 +616,28 @@
 
         // Load stats on page load and refresh every 5 seconds
         loadSystemStats();
+        loadScripts(); // Load scripts
         setInterval(loadSystemStats, 5000);
+
+        // Update switchTab to handle scripts
+        const originalSwitchTab = window.switchTab;
+        window.switchTab = function (tabName) {
+            // Hide all
+            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            // Show new
+            document.getElementById(`tab-${tabName}`).style.display = 'block';
+
+            // Activate button
+            const btns = document.querySelectorAll('.tab-btn');
+            btns.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(tabName)) btn.classList.add('active');
+            });
+
+            if (tabName === 'scripts') loadScripts();
+            if (tabName === 'volumes') loadVolumes();
+        }
 
         // Volume Management
         function loadVolumes() {
@@ -818,6 +926,146 @@
             loadUsers(); // Refresh
         });
 
+
+        // --- SCRIPT MANAGEMENT ---
+        let allScripts = [];
+
+        function loadScripts() {
+            fetch('/api/admin/scripts')
+                .then(res => res.json())
+                .then(data => {
+                    allScripts = data.scripts || [];
+                    renderScriptsList();
+                    renderContainerScriptsSelection();
+                });
+        }
+
+        function renderScriptsList() {
+            const listDiv = document.getElementById('scriptList');
+            if (!listDiv) return;
+
+            if (allScripts.length === 0) {
+                listDiv.innerHTML = '<p style="color: var(--text-secondary);">No scripts found.</p>';
+                return;
+            }
+
+            let html = '<div class="script-list">';
+            allScripts.forEach(s => {
+                // Escape html in name
+                const safeName = s.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                html += `
+                    <div class="script-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-dark); border-radius: 0.5rem; margin-bottom: 0.5rem;">
+                        <div style="flex: 1;">
+                            <strong style="color: var(--text-primary);"><i class="ri-code-line"></i> ${safeName}</strong>
+                            <div style="font-size: 0.8em; color: var(--text-secondary);">
+                                ID: ${s.id} | Created: ${s.created_at}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn-icon primary" onclick='openScriptModal(${JSON.stringify(s)})' title="Edit">
+                                <i class="ri-edit-line"></i>
+                            </button>
+                            <button class="btn-icon danger" onclick="deleteScript(${s.id})" title="Delete">
+                                <i class="ri-delete-bin-line"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            listDiv.innerHTML = html;
+        }
+
+        function renderContainerScriptsSelection() {
+            const listDiv = document.getElementById('containerScriptsList');
+            if (!listDiv) return;
+
+            if (allScripts.length === 0) {
+                listDiv.innerHTML = '<p style="color: var(--text-secondary); padding: 0.5rem;">No scripts available. Create one in the Scripts tab.</p>';
+                return;
+            }
+
+            let html = '';
+            allScripts.forEach(s => {
+                const safeName = s.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                html += `
+                    <div style="display: flex; align-items: center; padding: 0.25rem 0;">
+                        <input type="checkbox" name="selected_scripts" value="${s.id}" id="script_sel_${s.id}" style="width: auto; margin-right: 0.5rem;">
+                        <label for="script_sel_${s.id}" style="margin: 0; cursor: pointer; color: var(--text-primary);">${safeName}</label>
+                    </div>
+                 `;
+            });
+            listDiv.innerHTML = html;
+        }
+
+        function openScriptModal(script = null) {
+            const modal = document.getElementById('scriptModal');
+            const title = document.getElementById('scriptModalTitle');
+            const idInput = document.getElementById('scriptId');
+            const nameInput = document.getElementById('scriptName');
+            const contentInput = document.getElementById('scriptContent');
+
+            if (script) {
+                title.innerText = "Edit Script";
+                idInput.value = script.id;
+                nameInput.value = script.name;
+                contentInput.value = script.content;
+            } else {
+                title.innerText = "Create Script";
+                idInput.value = "";
+                nameInput.value = "";
+                contentInput.value = "#!/bin/bash\n\n";
+            }
+            modal.style.display = 'flex';
+        }
+
+        document.getElementById('scriptForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const id = document.getElementById('scriptId').value;
+            const name = document.getElementById('scriptName').value;
+            const content = document.getElementById('scriptContent').value;
+
+            const endpoint = id ? '/api/admin/scripts/update' : '/api/admin/scripts/create';
+            const body = { name, content };
+            if (id) body.id = id;
+
+            fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) showToast(data.error, 'error');
+                    else {
+                        document.getElementById('scriptModal').style.display = 'none';
+                        loadScripts();
+                        showToast("Script saved", 'success');
+                    }
+                });
+        });
+
+        async function deleteScript(id) {
+            if (!await showConfirm('Delete Script', 'Are you sure? This cannot be undone.')) return;
+
+            fetch('/api/admin/scripts/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) showToast(data.error, 'error');
+                    else {
+                        loadScripts();
+                        showToast("Script deleted", 'success');
+                    }
+                });
+        }
+
+        // Add to init (hook into DOMContentLoaded or just call it)
+        // We'll call loadScripts in switchTab or init.
+
         // Container Limits Modal Functions
         function openLimitsModal(containerId) {
             document.getElementById('limitsContainerId').value = containerId;
@@ -1044,12 +1292,69 @@
             }
         }
 
+        // Initialize Creation Socket
+        const creationSocket = io('/creation');
+
+        creationSocket.on('connect', () => {
+            console.log('Connected to creation namespace');
+        });
+
+        const logOutput = document.getElementById('creationLogOutput');
+        const closeLogBtn = document.getElementById('closeCreationLogBtn');
+        const creationProgress = document.getElementById('creationProgress');
+
+        creationSocket.on('creation_log', (data) => {
+            logOutput.innerText += data.msg + '\n';
+            logOutput.scrollTop = logOutput.scrollHeight;
+        });
+
+        creationSocket.on('creation_complete', () => {
+            logOutput.innerText += '\n✅ DONE: Container created successfully!\n';
+            logOutput.scrollTop = logOutput.scrollHeight;
+            finishCreation(true);
+        });
+
+        creationSocket.on('creation_failed', (data) => {
+            logOutput.innerText += `\n❌ ERROR: ${data.error}\n`;
+            logOutput.scrollTop = logOutput.scrollHeight;
+            finishCreation(false);
+        });
+
+        function finishCreation(success) {
+            creationProgress.style.display = 'none';
+            closeLogBtn.disabled = false;
+            closeLogBtn.classList.remove('btn-outline');
+
+            if (success) {
+                closeLogBtn.classList.add('btn-primary');
+                // Refresh lists
+                loadUsers();
+            } else {
+                closeLogBtn.classList.add('btn-outline'); // Stay gray/red?
+            }
+        }
+
+        function closeCreationLogModal() {
+            document.getElementById('creationLogModal').style.display = 'none';
+            // Reset state
+            logOutput.innerText = '';
+            closeLogBtn.disabled = true;
+            closeLogBtn.classList.remove('btn-primary');
+            closeLogBtn.classList.add('btn-outline');
+            creationProgress.style.display = 'block';
+        }
+
         document.getElementById('createContainerForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const username = document.getElementById('containerUserTarget').value;
             const name = document.getElementById('containerName').value;
             const ports = document.getElementById('containerPorts').value;
             const yaml_config = document.getElementById('containerYaml').value;
+
+            // Collect selected scripts
+            const selectedScripts = Array.from(document.querySelectorAll('input[name="selected_scripts"]:checked'))
+                .map(cb => parseInt(cb.value));
+
             const submitBtn = e.target.querySelector('button');
             const originalText = submitBtn.innerText;
 
@@ -1059,19 +1364,32 @@
             fetch('/api/admin/container/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, name, ports, yaml_config })
+                body: JSON.stringify({ username, name, ports, yaml_config, scripts: selectedScripts })
             })
                 .then(res => res.json())
                 .then(data => {
                     submitBtn.innerText = originalText;
                     submitBtn.disabled = false;
 
-                    if (data.error) showToast(data.error, 'error');
-                    else {
+                    if (data.error) {
+                        showToast(data.error, 'error');
+                    } else if (data.status === 'started' && data.task_id) {
+                        // Close form modal
                         document.getElementById('createContainerModal').style.display = 'none';
                         e.target.reset();
-                        loadUsers();
+
+                        // Open Log Modal
+                        document.getElementById('creationLogModal').style.display = 'flex';
+                        logOutput.innerText = 'Initiating creation process...\n';
+
+                        // Join Room
+                        creationSocket.emit('join_creation_room', { task_id: data.task_id });
                     }
+                })
+                .catch(err => {
+                    submitBtn.innerText = originalText;
+                    submitBtn.disabled = false;
+                    showToast('Network error: ' + err, 'error');
                 });
         });
 

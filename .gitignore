@@ -89,4 +89,7 @@ docker-compose.override.yml
 .coverage
 htmlcov/
 .pytest_cache/
-.tox/
+# Helper scripts (Local dev)
+check_users.py
+run_verification.sh
+tests/
